@@ -1,6 +1,3 @@
-import https from "https";
-import http from "http";
-
 interface CameraConfig {
   hostname: string;
   portaHttp: number;
@@ -16,8 +13,26 @@ interface SnapshotResult {
   contentType?: string;
 }
 
+function cleanHostname(hostname: string): string {
+  let clean = hostname;
+  if (clean.startsWith("http://")) {
+    clean = clean.replace("http://", "");
+  }
+  if (clean.startsWith("https://")) {
+    clean = clean.replace("https://", "");
+  }
+  if (clean.includes("/")) {
+    clean = clean.split("/")[0];
+  }
+  if (clean.includes(":")) {
+    clean = clean.split(":")[0];
+  }
+  return clean;
+}
+
 function buildSnapshotUrl(config: CameraConfig): string {
-  const { hostname, portaHttp, usuario, senha, marca } = config;
+  const hostname = cleanHostname(config.hostname);
+  const { portaHttp, usuario, senha, marca } = config;
   
   switch (marca.toLowerCase()) {
     case "reolink":
@@ -31,124 +46,88 @@ function buildSnapshotUrl(config: CameraConfig): string {
   }
 }
 
-function buildSnapshotUrlHttps(config: CameraConfig): string {
-  const { hostname, portaHttp, usuario, senha, marca } = config;
+export async function fetchSnapshot(config: CameraConfig): Promise<SnapshotResult> {
+  const url = buildSnapshotUrl(config);
+  console.log(`[Camera] Fetching snapshot from: ${url.replace(/password=[^&]+/, 'password=***')}`);
   
-  switch (marca.toLowerCase()) {
-    case "reolink":
-      return `https://${hostname}:${portaHttp}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${encodeURIComponent(usuario)}&password=${encodeURIComponent(senha)}`;
-    case "hikvision":
-      return `https://${hostname}:${portaHttp}/ISAPI/Streaming/channels/101/picture`;
-    case "intelbras":
-      return `https://${hostname}:${portaHttp}/cgi-bin/snapshot.cgi?channel=0&user=${encodeURIComponent(usuario)}&password=${encodeURIComponent(senha)}`;
-    default:
-      return `https://${hostname}:${portaHttp}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${encodeURIComponent(usuario)}&password=${encodeURIComponent(senha)}`;
-  }
-}
-
-export async function fetchSnapshot(config: CameraConfig, useHttps: boolean = false): Promise<SnapshotResult> {
-  return new Promise((resolve) => {
-    let cleanHostname = config.hostname;
-    if (cleanHostname.startsWith("http://")) {
-      cleanHostname = cleanHostname.replace("http://", "");
-    }
-    if (cleanHostname.startsWith("https://")) {
-      cleanHostname = cleanHostname.replace("https://", "");
-    }
-    if (cleanHostname.includes("/")) {
-      cleanHostname = cleanHostname.split("/")[0];
-    }
-    if (cleanHostname.includes(":")) {
-      cleanHostname = cleanHostname.split(":")[0];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return {
+        sucesso: false,
+        mensagem: `Erro HTTP ${response.status}: ${response.statusText}`,
+      };
     }
     
-    const cleanConfig = { ...config, hostname: cleanHostname };
-    const url = useHttps ? buildSnapshotUrlHttps(cleanConfig) : buildSnapshotUrl(cleanConfig);
-    const { hostname, portaHttp, usuario, senha, marca } = config;
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     
-    const options: http.RequestOptions | https.RequestOptions = {
-      timeout: 10000,
-      rejectUnauthorized: false,
-    };
-
-    if (marca.toLowerCase() === "hikvision") {
-      options.auth = `${usuario}:${senha}`;
-    }
-
-    const protocol = useHttps ? https : http;
-    
-    const req = protocol.get(url, options, (res) => {
-      const chunks: Buffer[] = [];
+    if (buffer.length < 1000) {
+      const text = buffer.toString('utf8');
+      console.log(`[Camera] Small response (${buffer.length} bytes): ${text.substring(0, 500)}`);
       
-      if (res.statusCode !== 200) {
-        resolve({
+      if (text.includes('Login has been locked')) {
+        return {
           sucesso: false,
-          mensagem: `Erro HTTP ${res.statusCode}: ${res.statusMessage}`,
-        });
-        return;
-      }
-
-      res.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      res.on("end", () => {
-        const buffer = Buffer.concat(chunks);
-        const contentType = res.headers["content-type"] || "image/jpeg";
-        
-        if (buffer.length < 1000) {
-          const text = buffer.toString("utf8");
-          if (text.includes("error") || text.includes("Error") || text.includes("unauthorized")) {
-            resolve({
-              sucesso: false,
-              mensagem: "Erro de autenticação ou resposta inválida da câmera",
-            });
-            return;
-          }
-        }
-
-        resolve({
-          sucesso: true,
-          mensagem: "Snapshot capturado com sucesso",
-          imageBuffer: buffer,
-          contentType,
-        });
-      });
-    });
-
-    req.on("error", (err) => {
-      if (!useHttps && (err.message.includes("ECONNREFUSED") || err.message.includes("socket hang up"))) {
-        fetchSnapshot(config, true).then(resolve);
-        return;
+          mensagem: 'Login bloqueado temporariamente. Aguarde alguns minutos e tente novamente.',
+        };
       }
       
-      resolve({
+      if (text.includes('error') || text.includes('Error') || text.includes('unauthorized') || text.includes('Unauthorized')) {
+        return {
+          sucesso: false,
+          mensagem: 'Erro de autenticação. Verifique usuário e senha da câmera.',
+        };
+      }
+      
+      if (!contentType.includes('image')) {
+        return {
+          sucesso: false,
+          mensagem: `Resposta inesperada da câmera: ${text.substring(0, 100)}`,
+        };
+      }
+    }
+    
+    console.log(`[Camera] Snapshot captured successfully, size: ${buffer.length} bytes`);
+    
+    return {
+      sucesso: true,
+      mensagem: 'Snapshot capturado com sucesso',
+      imageBuffer: buffer,
+      contentType,
+    };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      return {
         sucesso: false,
-        mensagem: `Erro de conexão: ${err.message}`,
-      });
-    });
-
-    req.on("timeout", () => {
-      req.destroy();
-      resolve({
-        sucesso: false,
-        mensagem: "Timeout: câmera não respondeu em 10 segundos",
-      });
-    });
-  });
+        mensagem: 'Timeout: câmera não respondeu em 15 segundos',
+      };
+    }
+    
+    console.error(`[Camera] Error fetching snapshot:`, error.message);
+    
+    return {
+      sucesso: false,
+      mensagem: `Erro de conexão: ${error.message}`,
+    };
+  }
 }
 
 export async function testCameraConnection(config: CameraConfig): Promise<SnapshotResult> {
-  const result = await fetchSnapshot(config, false);
-  
-  if (!result.sucesso) {
-    const httpsResult = await fetchSnapshot(config, true);
-    return httpsResult;
-  }
-  
-  return result;
-}
-
-export function getSnapshotUrlForProxy(config: CameraConfig): string {
-  return buildSnapshotUrlHttps(config);
+  return fetchSnapshot(config);
 }

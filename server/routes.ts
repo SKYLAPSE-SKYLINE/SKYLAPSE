@@ -290,19 +290,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Camera not found" });
       }
 
-      const cameraConfig = {
+      const result = await fetchSnapshot({
         hostname: camera.hostname,
         portaHttp: camera.portaHttp,
         usuario: camera.usuario,
         senha: camera.senha,
         marca: camera.marca || "reolink",
-      };
-
-      let result = await fetchSnapshot(cameraConfig, false);
-      
-      if (!result.sucesso) {
-        result = await fetchSnapshot(cameraConfig, true);
-      }
+      });
 
       if (result.sucesso && result.imageBuffer) {
         res.set("Content-Type", result.contentType || "image/jpeg");
