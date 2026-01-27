@@ -13,6 +13,11 @@ interface SnapshotResult {
   contentType?: string;
 }
 
+function isCompleteUrl(hostname: string): boolean {
+  return (hostname.startsWith("http://") || hostname.startsWith("https://")) && 
+         (hostname.includes("/cgi-bin/") || hostname.includes("?") || hostname.includes("/ISAPI/"));
+}
+
 function cleanHostname(hostname: string): string {
   let clean = hostname;
   if (clean.startsWith("http://")) {
@@ -31,6 +36,12 @@ function cleanHostname(hostname: string): string {
 }
 
 function buildSnapshotUrl(config: CameraConfig): string {
+  // Se o hostname já é uma URL completa, usa diretamente
+  if (isCompleteUrl(config.hostname)) {
+    console.log(`[Camera] Using complete URL provided by user`);
+    return config.hostname;
+  }
+  
   const hostname = cleanHostname(config.hostname);
   const { portaHttp, usuario, senha, marca } = config;
   
