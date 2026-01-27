@@ -1,38 +1,279 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { 
+  clients, locations, cameras, captures, timelapses,
+  type Client, type InsertClient,
+  type Location, type InsertLocation,
+  type Camera, type InsertCamera,
+  type Capture, type InsertCapture,
+  type Timelapse, type InsertTimelapse,
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Clients
+  getClients(): Promise<Client[]>;
+  getClient(id: string): Promise<Client | undefined>;
+  createClient(client: InsertClient): Promise<Client>;
+  updateClient(id: string, client: Partial<InsertClient>): Promise<Client | undefined>;
+  deleteClient(id: string): Promise<boolean>;
+
+  // Locations
+  getLocations(): Promise<(Location & { cliente?: Client })[]>;
+  getLocation(id: string): Promise<Location | undefined>;
+  createLocation(location: InsertLocation): Promise<Location>;
+  updateLocation(id: string, location: Partial<InsertLocation>): Promise<Location | undefined>;
+  deleteLocation(id: string): Promise<boolean>;
+
+  // Cameras
+  getCameras(): Promise<(Camera & { localidade?: Location & { cliente?: Client } })[]>;
+  getCamera(id: string): Promise<Camera | undefined>;
+  getOfflineCameras(): Promise<Camera[]>;
+  createCamera(camera: InsertCamera): Promise<Camera>;
+  updateCamera(id: string, camera: Partial<InsertCamera>): Promise<Camera | undefined>;
+  deleteCamera(id: string): Promise<boolean>;
+
+  // Captures
+  getCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]>;
+  getLastCapture(cameraId: string): Promise<Capture | undefined>;
+  createCapture(capture: InsertCapture): Promise<Capture>;
+  getTodayCapturesCount(): Promise<number>;
+
+  // Timelapses
+  getTimelapses(): Promise<(Timelapse & { camera?: Camera })[]>;
+  getTimelapse(id: string): Promise<Timelapse | undefined>;
+  getRecentTimelapses(limit?: number): Promise<Timelapse[]>;
+  getProcessingTimelapsesCount(): Promise<number>;
+  createTimelapse(timelapse: InsertTimelapse): Promise<Timelapse>;
+  updateTimelapse(id: string, timelapse: Partial<Timelapse>): Promise<Timelapse | undefined>;
+  deleteTimelapse(id: string): Promise<boolean>;
+
+  // Stats
+  getStats(): Promise<{
+    totalClients: number;
+    activeClients: number;
+    totalCameras: number;
+    onlineCameras: number;
+    offlineCameras: number;
+    todayCaptures: number;
+    processingTimelapses: number;
+  }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  // Clients
+  async getClients(): Promise<Client[]> {
+    return await db.select().from(clients).orderBy(desc(clients.createdAt));
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getClient(id: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    return client;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async createClient(client: InsertClient): Promise<Client> {
+    const [newClient] = await db.insert(clients).values(client).returning();
+    return newClient;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async updateClient(id: string, client: Partial<InsertClient>): Promise<Client | undefined> {
+    const [updated] = await db.update(clients).set(client).where(eq(clients.id, id)).returning();
+    return updated;
+  }
+
+  async deleteClient(id: string): Promise<boolean> {
+    const result = await db.delete(clients).where(eq(clients.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Locations
+  async getLocations(): Promise<(Location & { cliente?: Client })[]> {
+    const result = await db.query.locations.findMany({
+      with: { cliente: true },
+      orderBy: desc(locations.createdAt),
+    });
+    return result;
+  }
+
+  async getLocation(id: string): Promise<Location | undefined> {
+    const [location] = await db.select().from(locations).where(eq(locations.id, id));
+    return location;
+  }
+
+  async createLocation(location: InsertLocation): Promise<Location> {
+    const [newLocation] = await db.insert(locations).values(location).returning();
+    return newLocation;
+  }
+
+  async updateLocation(id: string, location: Partial<InsertLocation>): Promise<Location | undefined> {
+    const [updated] = await db.update(locations).set(location).where(eq(locations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLocation(id: string): Promise<boolean> {
+    const result = await db.delete(locations).where(eq(locations.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Cameras
+  async getCameras(): Promise<(Camera & { localidade?: Location & { cliente?: Client } })[]> {
+    const result = await db.query.cameras.findMany({
+      with: { 
+        localidade: {
+          with: { cliente: true }
+        }
+      },
+      orderBy: desc(cameras.createdAt),
+    });
+    return result;
+  }
+
+  async getCamera(id: string): Promise<Camera | undefined> {
+    const [camera] = await db.select().from(cameras).where(eq(cameras.id, id));
+    return camera;
+  }
+
+  async getOfflineCameras(): Promise<Camera[]> {
+    return await db.select().from(cameras).where(eq(cameras.status, "offline"));
+  }
+
+  async createCamera(camera: InsertCamera): Promise<Camera> {
+    const [newCamera] = await db.insert(cameras).values(camera).returning();
+    return newCamera;
+  }
+
+  async updateCamera(id: string, camera: Partial<InsertCamera>): Promise<Camera | undefined> {
+    const [updated] = await db.update(cameras).set(camera).where(eq(cameras.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCamera(id: string): Promise<boolean> {
+    const result = await db.delete(cameras).where(eq(cameras.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Captures
+  async getCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]> {
+    let conditions = [eq(captures.cameraId, cameraId)];
+    
+    if (dataInicio) {
+      conditions.push(gte(captures.capturadoEm, new Date(dataInicio)));
+    }
+    if (dataFim) {
+      const endDate = new Date(dataFim);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(captures.capturadoEm, endDate));
+    }
+
+    return await db.select()
+      .from(captures)
+      .where(and(...conditions))
+      .orderBy(desc(captures.capturadoEm))
+      .limit(100);
+  }
+
+  async getLastCapture(cameraId: string): Promise<Capture | undefined> {
+    const [capture] = await db.select()
+      .from(captures)
+      .where(eq(captures.cameraId, cameraId))
+      .orderBy(desc(captures.capturadoEm))
+      .limit(1);
+    return capture;
+  }
+
+  async createCapture(capture: InsertCapture): Promise<Capture> {
+    const [newCapture] = await db.insert(captures).values(capture).returning();
+    return newCapture;
+  }
+
+  async getTodayCapturesCount(): Promise<number> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(captures)
+      .where(gte(captures.capturadoEm, today));
+    
+    return Number(result[0]?.count) || 0;
+  }
+
+  // Timelapses
+  async getTimelapses(): Promise<(Timelapse & { camera?: Camera })[]> {
+    const result = await db.query.timelapses.findMany({
+      with: { camera: true },
+      orderBy: desc(timelapses.createdAt),
+    });
+    return result;
+  }
+
+  async getTimelapse(id: string): Promise<Timelapse | undefined> {
+    const [timelapse] = await db.select().from(timelapses).where(eq(timelapses.id, id));
+    return timelapse;
+  }
+
+  async getRecentTimelapses(limit: number = 5): Promise<Timelapse[]> {
+    return await db.select()
+      .from(timelapses)
+      .orderBy(desc(timelapses.createdAt))
+      .limit(limit);
+  }
+
+  async getProcessingTimelapsesCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(timelapses)
+      .where(eq(timelapses.status, "processando"));
+    
+    return Number(result[0]?.count) || 0;
+  }
+
+  async createTimelapse(timelapse: InsertTimelapse): Promise<Timelapse> {
+    const [newTimelapse] = await db.insert(timelapses).values(timelapse).returning();
+    return newTimelapse;
+  }
+
+  async updateTimelapse(id: string, timelapse: Partial<Timelapse>): Promise<Timelapse | undefined> {
+    const [updated] = await db.update(timelapses).set(timelapse).where(eq(timelapses.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTimelapse(id: string): Promise<boolean> {
+    const result = await db.delete(timelapses).where(eq(timelapses.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // Stats
+  async getStats(): Promise<{
+    totalClients: number;
+    activeClients: number;
+    totalCameras: number;
+    onlineCameras: number;
+    offlineCameras: number;
+    todayCaptures: number;
+    processingTimelapses: number;
+  }> {
+    const [clientStats] = await db.select({ 
+      total: sql<number>`count(*)`,
+      active: sql<number>`count(*) filter (where status = 'ativo')`
+    }).from(clients);
+
+    const [cameraStats] = await db.select({ 
+      total: sql<number>`count(*)`,
+      online: sql<number>`count(*) filter (where status = 'online')`,
+      offline: sql<number>`count(*) filter (where status = 'offline')`
+    }).from(cameras);
+
+    const todayCaptures = await this.getTodayCapturesCount();
+    const processingTimelapses = await this.getProcessingTimelapsesCount();
+
+    return {
+      totalClients: Number(clientStats?.total) || 0,
+      activeClients: Number(clientStats?.active) || 0,
+      totalCameras: Number(cameraStats?.total) || 0,
+      onlineCameras: Number(cameraStats?.online) || 0,
+      offlineCameras: Number(cameraStats?.offline) || 0,
+      todayCaptures,
+      processingTimelapses,
+    };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
