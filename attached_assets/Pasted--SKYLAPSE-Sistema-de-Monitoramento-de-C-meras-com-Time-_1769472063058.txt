@@ -1,0 +1,593 @@
+# SKYLAPSE - Sistema de Monitoramento de Câmeras com Time-lapse
+
+## OVERVIEW
+Plataforma SaaS para monitoramento de câmeras IP distribuídas em múltiplas localidades, com captura automática de fotos e geração de time-lapses sob demanda.
+
+**Modelo de Negócio:**
+- Admin (você/equipe) gerencia todo o sistema
+- Clientes pagam pelo serviço e veem apenas suas câmeras
+- Multi-tenant: cada cliente vê apenas o que foi atribuído a ele
+
+## STACK TÉCNICA
+- Frontend: React + TypeScript + Tailwind CSS
+- Backend: Node.js + Express + TypeScript
+- Queue: Bull + Redis (processamento assíncrono)
+- Video: Fluent-FFmpeg (geração de time-lapses)
+- Database: Supabase PostgreSQL
+- Storage: Supabase Storage (fotos e vídeos)
+- Auth: Supabase Auth (JWT)
+- Deploy: Render.com Pro ($85/mês) + Cron Job ($1/mês)
+
+## ESTRUTURA DE DADOS (SUPABASE)
+
+### Tabelas PostgreSQL
+```sql
+-- Clientes
+CREATE TABLE clientes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  nome TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  telefone TEXT,
+  empresa TEXT,
+  user_id UUID REFERENCES auth.users(id),
+  status TEXT DEFAULT 'ativo',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Localidades
+CREATE TABLE localidades (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  nome TEXT NOT NULL,
+  endereco TEXT,
+  descricao TEXT,
+  cliente_id UUID REFERENCES clientes(id),
+  status TEXT DEFAULT 'ativo',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Câmeras
+CREATE TABLE cameras (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  localidade_id UUID REFERENCES localidades(id),
+  nome TEXT NOT NULL,
+  marca TEXT, -- reolink, intelbras, hikvision, outra
+  modelo TEXT,
+  hostname TEXT NOT NULL,
+  porta_http INTEGER NOT NULL,
+  porta_rtsp INTEGER,
+  usuario TEXT NOT NULL,
+  senha TEXT NOT NULL,
+  intervalo_captura INTEGER DEFAULT 15,
+  status TEXT DEFAULT 'online',
+  ultima_captura TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Capturas
+CREATE TABLE capturas (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  camera_id UUID REFERENCES cameras(id) ON DELETE CASCADE,
+  imagem_url TEXT NOT NULL,
+  imagem_path TEXT NOT NULL,
+  tamanho_bytes INTEGER,
+  capturado_em TIMESTAMP DEFAULT NOW(),
+  INDEX idx_camera_data (camera_id, capturado_em DESC)
+);
+
+-- Time-lapses
+CREATE TABLE timelapses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  camera_id UUID REFERENCES cameras(id),
+  solicitado_por UUID REFERENCES auth.users(id),
+  nome TEXT,
+  data_inicio DATE NOT NULL,
+  data_fim DATE NOT NULL,
+  fps INTEGER DEFAULT 30,
+  status TEXT DEFAULT 'na_fila',
+  progresso INTEGER DEFAULT 0,
+  video_url TEXT,
+  video_path TEXT,
+  tamanho_bytes INTEGER,
+  duracao_segundos INTEGER,
+  total_frames INTEGER,
+  erro_mensagem TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+```
+
+### RLS Policies
+```sql
+-- Clientes só veem suas localidades
+ALTER TABLE localidades ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "clientes_suas_localidades" ON localidades FOR SELECT
+USING (cliente_id IN (SELECT id FROM clientes WHERE user_id = auth.uid()));
+
+-- Clientes só veem suas câmeras
+ALTER TABLE cameras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "clientes_suas_cameras" ON cameras FOR SELECT
+USING (localidade_id IN (
+  SELECT id FROM localidades WHERE cliente_id IN (
+    SELECT id FROM clientes WHERE user_id = auth.uid()
+  )
+));
+
+-- Admins veem tudo
+CREATE POLICY "admins_tudo" ON localidades FOR ALL
+USING (auth.jwt()->>'role' = 'admin');
+```
+
+### Storage Buckets
+```
+capturas/ (público)
+└── {ano}/{mes}/{dia}/camera-{id}/{hora}-{min}-{seg}.jpg
+
+timelapses/ (público)
+└── timelapse-{id}/video.mp4
+```
+
+## FUNCIONALIDADES
+
+### 1. AUTENTICAÇÃO
+- Supabase Auth com email/senha
+- JWT tokens
+- Rotas protegidas por role (admin/cliente)
+- Redirect baseado em tipo: admin → /admin/dashboard, cliente → /dashboard
+
+### 2. DASHBOARD ADMIN
+**Página:** /admin/dashboard
+
+**Cards de Métricas:**
+- Total de clientes ativos
+- Total de câmeras (online/offline)
+- Total de capturas hoje
+- Time-lapses em processamento
+
+**Widgets:**
+- Gráfico capturas últimos 7 dias
+- Lista de câmeras offline (alertas)
+- Últimos time-lapses gerados
+
+### 3. GERENCIAMENTO DE CLIENTES (ADMIN)
+**Página:** /admin/clientes
+
+**Lista:**
+- Tabela: Nome, Email, Empresa, Localidades, Câmeras, Status
+- Ações: [Editar] [Desativar] [Ver Detalhes]
+
+**Form Adicionar:**
+```typescript
+{
+  nome: string,
+  email: string,
+  telefone?: string,
+  empresa?: string
+}
+```
+- Cria usuário no Supabase Auth
+- Envia email de boas-vindas com senha temporária
+- Status: ativo por padrão
+
+### 4. GERENCIAMENTO DE LOCALIDADES (ADMIN)
+**Página:** /admin/localidades
+
+**Lista:**
+- Tabela: Nome, Endereço, Cliente, Qtd Câmeras, Status
+- Filtros: por cliente
+- Ações: [Editar] [Excluir] [Ver Câmeras]
+
+**Form Adicionar:**
+```typescript
+{
+  nome: string,
+  endereco: string,
+  descricao?: string,
+  cliente_id: uuid (dropdown)
+}
+```
+
+### 5. GERENCIAMENTO DE CÂMERAS (ADMIN) ⭐
+**Página:** /admin/cameras
+
+**Lista de Câmeras:**
+- Tabela com colunas:
+  * Nome
+  * Localidade
+  * Status (🟢 Online / 🔴 Offline)
+  * Marca
+  * Última Captura (timestamp)
+  * Ações: [Editar] [Excluir] [Ver Ao Vivo] [Ver Galeria]
+- Filtros: por localidade, status, marca
+- Botão [+ Nova Câmera] no topo direito
+
+**Formulário Cadastro de Câmera (Modal ou Página):**
+```typescript
+interface CameraForm {
+  // Informações Básicas
+  nome: string              // Ex: "Câmera Entrada Principal"
+  localidade_id: uuid       // Dropdown com localidades existentes
+  marca: 'reolink' | 'intelbras' | 'hikvision' | 'outra'
+  modelo?: string           // Ex: "RLC-811A" (opcional)
+  
+  // Configurações de Rede
+  hostname: string          // Ex: "cameras-sp.ddns.net"
+  porta_http: number        // Ex: 9001
+  porta_rtsp?: number       // Ex: 5541 (opcional)
+  usuario: string           // Ex: "admin"
+  senha: string             // Input type="password"
+  
+  // Captura Automática
+  intervalo_captura: number // Dropdown: 5, 10, 15, 30 minutos
+}
+```
+
+**Layout do Formulário:**
+```
+┌──────────────────────────────────────────┐
+│ ➕ Adicionar Nova Câmera                 │
+├──────────────────────────────────────────┤
+│                                          │
+│ 📝 INFORMAÇÕES BÁSICAS                   │
+│ Nome:                                    │
+│ [___________________________________]    │
+│                                          │
+│ Localidade:                              │
+│ [Selecione uma localidade... ▼]         │
+│                                          │
+│ Marca:                                   │
+│ (•) Reolink  ( ) Intelbras  ( ) Outra   │
+│                                          │
+│ Modelo (opcional):                       │
+│ [___________________________________]    │
+│                                          │
+│ 🌐 CONFIGURAÇÕES DE REDE                 │
+│ Hostname/NO-IP:                          │
+│ [___________________________________]    │
+│                                          │
+│ Porta HTTP:          Porta RTSP:        │
+│ [9001____]           [5541____]         │
+│                                          │
+│ 🔐 CREDENCIAIS                           │
+│ Usuário:                                 │
+│ [admin_____________________________]    │
+│                                          │
+│ Senha:                                   │
+│ [••••••••••••••••••••] [👁️ Mostrar]    │
+│                                          │
+│ ⏰ CAPTURA AUTOMÁTICA                    │
+│ Intervalo de captura:                    │
+│ [15 minutos ▼] (5, 10, 15, 30)         │
+│                                          │
+│ [🧪 Testar Conexão]                     │
+│                                          │
+│ [Cancelar]  [💾 Salvar Câmera]          │
+└──────────────────────────────────────────┘
+```
+
+**Botão "Testar Conexão":**
+- Endpoint: POST /api/cameras/test
+- Request:
+```typescript
+{
+  hostname: string,
+  porta_http: number,
+  usuario: string,
+  senha: string,
+  marca: string
+}
+```
+- Backend tenta capturar snapshot da câmera
+- Response sucesso:
+```typescript
+{
+  sucesso: true,
+  imagem: "data:image/jpeg;base64,...",
+  mensagem: "✅ Câmera conectada com sucesso!"
+}
+```
+- Mostra preview da imagem em modal
+- Response erro:
+```typescript
+{
+  sucesso: false,
+  erro: "Timeout ao conectar" | "Credenciais inválidas" | "Câmera não encontrada"
+}
+```
+
+**Fluxo Completo:**
+1. Admin clica [+ Nova Câmera]
+2. Preenche todos os campos do formulário
+3. (Opcional mas recomendado) Clica [Testar Conexão]
+   - Se sucesso: vê preview da câmera
+   - Se falha: corrige dados antes de salvar
+4. Clica [Salvar Câmera]
+5. Validações backend
+6. Insere no banco de dados
+7. Toast: "✅ Câmera adicionada com sucesso!"
+8. Redireciona para lista de câmeras
+9. Câmera entra automaticamente no ciclo de captura
+
+**Validações:**
+- Nome: obrigatório, min 3 caracteres
+- Hostname: obrigatório, formato válido
+- Portas: número entre 1-65535
+- Usuário/Senha: obrigatórios
+- Localidade: obrigatória
+
+### 6. CAPTURA AUTOMÁTICA (CRON JOB)
+**Render Cron ($1/mês):**
+```yaml
+schedule: "*/5 * * * *" # A cada 5 minutos
+```
+
+**Lógica:**
+```typescript
+// Para cada câmera ativa
+for (const camera of cameras) {
+  // Verifica se está na hora de capturar
+  const minutosDesdeUltimaCaptura = diff(now, camera.ultima_captura)
+  
+  if (minutosDesdeUltimaCaptura >= camera.intervalo_captura) {
+    try {
+      // Monta URL baseado na marca
+      const url = camera.marca === 'reolink' 
+        ? `http://${camera.hostname}:${camera.porta_http}/cgi-bin/api.cgi?cmd=Snap&channel=0&user=${camera.usuario}&password=${camera.senha}`
+        : `http://${camera.hostname}:${camera.porta_http}/cgi-bin/snapshot.cgi?channel=1&user=${camera.usuario}&password=${camera.senha}`
+      
+      // Captura
+      const response = await axios.get(url, { 
+        responseType: 'arraybuffer',
+        timeout: 10000 
+      })
+      
+      // Gera path
+      const path = `${ano}/${mes}/${dia}/camera-${camera.id}/${hora}-${min}-${seg}.jpg`
+      
+      // Upload Supabase
+      await supabase.storage.from('capturas').upload(path, response.data)
+      
+      // Registra no banco
+      await supabase.from('capturas').insert({
+        camera_id: camera.id,
+        imagem_url: getPublicUrl(path),
+        imagem_path: path,
+        tamanho_bytes: response.data.length
+      })
+      
+      // Atualiza câmera
+      await supabase.from('cameras').update({
+        ultima_captura: now(),
+        status: 'online'
+      }).eq('id', camera.id)
+      
+    } catch (error) {
+      // Incrementa contador de falhas
+      // Se 3 falhas consecutivas: status='offline'
+      // Log erro
+    }
+  }
+}
+```
+
+### 7. VISUALIZAÇÃO AO VIVO (MVP)
+**Implementação Simples:**
+- Snapshot que atualiza a cada 3 segundos
+- Endpoint: GET /api/cameras/{id}/snapshot
+  - Retorna última captura OU captura nova na hora
+- Frontend: setInterval atualiza imagem
+
+**Interface:**
+- Grid 2x2 ou 3x3 de câmeras
+- Cada card:
+  * Nome da câmera
+  * Imagem atualizando
+  * Status (🟢/🔴)
+  * Timestamp "Atualizado há X segundos"
+  * Botão [Expandir] → modal fullscreen
+
+### 8. GALERIA DE FOTOS
+**Página:** /cameras/{id}/galeria
+
+**Filtros:**
+- Data início/fim (date pickers)
+- Horário do dia (opcional)
+
+**Visualização:**
+- Grid de miniaturas (50 por página)
+- Lazy loading
+- Ao clicar: lightbox com navegação
+- Botão download em cada foto
+
+### 9. GERAÇÃO DE TIME-LAPSE
+**Página:** /admin/timelapses
+
+**Formulário:**
+```typescript
+{
+  camera_id: uuid,
+  data_inicio: date,
+  data_fim: date,
+  fps: 15 | 30 | 60
+}
+```
+
+**Preview antes de gerar:**
+- Total de fotos no período: X
+- Duração estimada do vídeo: Y segundos
+- Tamanho estimado: Z MB
+
+**Botão:** [🎬 Gerar Time-lapse]
+
+**Worker (Render Pro - 8GB RAM):**
+```typescript
+async function processarTimelapse(job) {
+  const { timelapseId, cameraId, dataInicio, dataFim, fps } = job.data
+  
+  try {
+    // 1. Status processando
+    await updateStatus(timelapseId, 'processando', 0)
+    
+    // 2. Buscar capturas
+    const capturas = await buscarCapturas(cameraId, dataInicio, dataFim)
+    
+    // 3. Download imagens para /tmp (batch de 10 paralelo)
+    const tempDir = `/tmp/timelapse-${timelapseId}`
+    for (let i = 0; i < capturas.length; i += 10) {
+      await Promise.all(batch.map(baixarImagem))
+      await updateProgress(timelapseId, 10 + (i/capturas.length * 40))
+    }
+    
+    // 4. FFmpeg gerar vídeo
+    await ffmpeg()
+      .input(`${tempDir}/frame-%06d.jpg`)
+      .inputFPS(fps)
+      .videoCodec('libx264')
+      .size('1920x1080')
+      .output(`${tempDir}/video.mp4`)
+      .on('progress', p => updateProgress(timelapseId, 50 + p.percent * 0.4))
+      .run()
+    
+    // 5. Upload Supabase
+    const videoBuffer = await fs.readFile(`${tempDir}/video.mp4`)
+    const path = `timelapses/timelapse-${timelapseId}/video.mp4`
+    await supabase.storage.from('timelapses').upload(path, videoBuffer)
+    
+    // 6. Update status pronto
+    await supabase.from('timelapses').update({
+      status: 'pronto',
+      progresso: 100,
+      video_url: getPublicUrl(path),
+      completed_at: now()
+    }).eq('id', timelapseId)
+    
+    // 7. Limpar /tmp
+    await fs.rm(tempDir, { recursive: true })
+    
+  } catch (error) {
+    await updateStatus(timelapseId, 'erro', 0, error.message)
+  }
+}
+```
+
+**Acompanhamento:**
+- Cliente faz polling: GET /api/timelapses/{id}/status a cada 2s
+- Mostra progresso: [████████░░] 65%
+- Quando pronto: botão [▶️ Assistir] [⬇️ Download]
+
+### 10. PORTAL DO CLIENTE
+**Páginas:**
+- /dashboard: localidades atribuídas, stats
+- /cameras: grid com live view das suas câmeras
+- /galeria: fotos das suas câmeras
+- /timelapses: vídeos disponíveis (visualiza/download)
+
+**Restrições:**
+- Vê apenas câmeras atribuídas (RLS)
+- NÃO pode adicionar/editar/remover câmeras
+- NÃO pode solicitar time-lapses (só admin)
+- Pode baixar fotos e vídeos
+
+## ESTRUTURA DO CÓDIGO
+```
+skylapse/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── admin/
+│   │   │   │   ├── CameraForm.tsx ⭐
+│   │   │   │   ├── CamerasList.tsx
+│   │   │   │   ├── TestConnection.tsx
+│   │   │   │   └── TimelapseForm.tsx
+│   │   │   ├── shared/
+│   │   │   │   ├── CameraCard.tsx
+│   │   │   │   ├── LiveView.tsx
+│   │   │   │   └── VideoPlayer.tsx
+│   │   ├── pages/
+│   │   │   ├── admin/
+│   │   │   │   ├── CamerasPage.tsx ⭐
+│   │   │   │   └── TimelapsesPage.tsx
+│   │   └── services/
+│   │       └── api.ts
+│
+├── backend/
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── cameras.ts ⭐
+│   │   │   └── timelapses.ts
+│   │   ├── controllers/
+│   │   │   └── CamerasController.ts ⭐
+│   │   ├── services/
+│   │   │   └── CameraService.ts
+│   │   ├── workers/
+│   │   │   └── timelapseWorker.ts
+│   │   └── cron/
+│   │       └── captura.ts ⭐
+│
+└── render.yaml
+```
+
+## RENDER.YAML
+```yaml
+services:
+  - type: web
+    name: skylapse-web
+    env: node
+    plan: pro # $85/mês - 8GB RAM para FFmpeg
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_KEY
+      - key: REDIS_URL
+
+  - type: worker
+    name: skylapse-worker
+    env: node
+    plan: pro
+    startCommand: node dist/workers/timelapseWorker.js
+    envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_KEY
+      - key: REDIS_URL
+
+  - type: cron
+    name: skylapse-captura
+    env: node
+    schedule: "*/5 * * * *"
+    startCommand: node dist/cron/captura.js
+    envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_KEY
+```
+
+## DESIGN
+- Cores: Azul primary (#3B82F6), Verde online, Vermelho offline
+- Font: Inter
+- Layout: Sidebar admin com menu, Cards para cliente
+- Responsivo mobile-first
+- Loading states, skeleton loaders
+- Toast notifications (sucesso/erro)
+
+## PRIORIDADES (ORDEM)
+1. Captura automática 100% confiável
+2. Time-lapses rápidos e sem falhas
+3. Live view funcional
+4. Interface limpa e intuitiva
+5. Performance
+
+## ENTREGÁVEIS
+- ✅ Frontend React completo e responsivo
+- ✅ Backend API com todas as rotas
+- ✅ Worker FFmpeg para time-lapses
+- ✅ Cron job captura automática
+- ✅ Schemas Supabase (SQL)
+- ✅ RLS policies
+- ✅ render.yaml configurado
+- ✅ README com instruções
+- ✅ .env.example
+- ✅ Validações frontend + backend
+- ✅ Tratamento de erros
+- ✅ Loading states
+- ✅ Código limpo e comentado
+
+Crie o sistema completo, funcional e pronto para deploy.
