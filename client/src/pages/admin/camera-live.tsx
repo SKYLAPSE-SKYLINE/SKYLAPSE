@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, StatusDot } from "@/components/status-badge";
-import { ArrowLeft, Maximize2, RefreshCw, Camera, Image } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, Maximize2, RefreshCw, Camera, Image, AlertCircle } from "lucide-react";
 import type { Camera as CameraType, Capture } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -15,24 +16,29 @@ export default function CameraLivePage() {
   const params = useParams();
   const cameraId = params.id;
   const [refreshKey, setRefreshKey] = useState(0);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
 
   const { data: camera, isLoading: cameraLoading } = useQuery<CameraType>({
     queryKey: ["/api/admin/cameras", cameraId],
   });
 
-  const { data: lastCapture, isLoading: captureLoading, refetch } = useQuery<Capture>({
+  const { data: lastCapture, refetch } = useQuery<Capture>({
     queryKey: ["/api/admin/cameras", cameraId, "last-capture"],
-    refetchInterval: 5000,
+    refetchInterval: 30000,
   });
+
+  const snapshotUrl = `/api/admin/cameras/${cameraId}/snapshot?t=${refreshKey}`;
 
   useEffect(() => {
     const interval = setInterval(() => {
-      refetch();
       setRefreshKey((k) => k + 1);
+      setImageError(false);
+      setImageLoading(true);
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [refetch]);
+  }, []);
 
   if (cameraLoading) {
     return (
@@ -95,7 +101,11 @@ export default function CameraLivePage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => refetch()}
+                onClick={() => {
+                  setRefreshKey((k) => k + 1);
+                  setImageError(false);
+                  setImageLoading(true);
+                }}
                 data-testid="button-refresh-snapshot"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -104,38 +114,57 @@ export default function CameraLivePage() {
           </CardHeader>
           <CardContent>
             <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-              {captureLoading && !lastCapture ? (
-                <Skeleton className="h-full w-full" />
-              ) : lastCapture?.imagemUrl ? (
+              {imageLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted">
+                  <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              {imageError ? (
+                <div className="flex h-full flex-col items-center justify-center">
+                  <AlertCircle className="h-16 w-16 text-destructive/50" />
+                  <p className="mt-4 text-muted-foreground">Erro ao conectar com a câmera</p>
+                  <p className="text-xs text-muted-foreground mt-2">Verifique se o hostname e porta estão corretos</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-4"
+                    onClick={() => {
+                      setRefreshKey((k) => k + 1);
+                      setImageError(false);
+                      setImageLoading(true);
+                    }}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Tentar Novamente
+                  </Button>
+                </div>
+              ) : (
                 <>
                   <img
-                    key={`${lastCapture.id}-${refreshKey}`}
-                    src={lastCapture.imagemUrl}
-                    alt={`Captura de ${camera?.nome}`}
+                    key={refreshKey}
+                    src={snapshotUrl}
+                    alt={`Snapshot ao vivo de ${camera?.nome}`}
                     className="h-full w-full object-contain"
+                    onLoad={() => setImageLoading(false)}
+                    onError={() => {
+                      setImageLoading(false);
+                      setImageError(true);
+                    }}
                   />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                    <div className="flex items-center justify-between text-white">
-                      <div className="flex items-center gap-2">
-                        <StatusDot status="online" />
-                        <span className="text-sm font-medium">{camera?.nome}</span>
+                  {!imageLoading && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                      <div className="flex items-center justify-between text-white">
+                        <div className="flex items-center gap-2">
+                          <StatusDot status="online" />
+                          <span className="text-sm font-medium">{camera?.nome}</span>
+                        </div>
+                        <span className="text-xs opacity-80">
+                          Ao vivo - Atualiza a cada 5s
+                        </span>
                       </div>
-                      <span className="text-xs opacity-80">
-                        {lastCapture.capturadoEm
-                          ? formatDistanceToNow(new Date(lastCapture.capturadoEm), {
-                              addSuffix: true,
-                              locale: ptBR,
-                            })
-                          : "Agora"}
-                      </span>
                     </div>
-                  </div>
+                  )}
                 </>
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center">
-                  <Camera className="h-16 w-16 text-muted-foreground/30" />
-                  <p className="mt-4 text-muted-foreground">Nenhuma captura disponível</p>
-                </div>
               )}
             </div>
           </CardContent>

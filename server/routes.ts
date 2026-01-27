@@ -9,6 +9,7 @@ import {
   insertTimelapseSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { testCameraConnection, fetchSnapshot } from "./camera-service";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -245,21 +246,33 @@ export async function registerRoutes(
     try {
       const { hostname, portaHttp, usuario, senha, marca } = req.body;
       
-      // For MVP, we'll simulate a connection test
-      // In production, this would actually try to connect to the camera
-      const isValid = hostname && portaHttp && usuario && senha;
-      
-      if (!isValid) {
+      if (!hostname || !portaHttp || !usuario || !senha) {
         return res.json({
           sucesso: false,
           mensagem: "Dados de conexão incompletos",
         });
       }
 
-      // Simulate connection test (in production, would actually connect)
+      const result = await testCameraConnection({
+        hostname,
+        portaHttp: Number(portaHttp),
+        usuario,
+        senha,
+        marca: marca || "reolink",
+      });
+
+      if (result.sucesso && result.imageBuffer) {
+        const base64Image = result.imageBuffer.toString("base64");
+        return res.json({
+          sucesso: true,
+          mensagem: "Conexão bem-sucedida! Câmera respondeu corretamente.",
+          imagem: `data:${result.contentType};base64,${base64Image}`,
+        });
+      }
+
       res.json({
-        sucesso: true,
-        mensagem: "Conexão simulada com sucesso! (Teste real requer câmera física)",
+        sucesso: result.sucesso,
+        mensagem: result.mensagem,
       });
     } catch (error) {
       console.error("Error testing camera:", error);
@@ -267,6 +280,36 @@ export async function registerRoutes(
         sucesso: false,
         mensagem: "Erro ao testar conexão",
       });
+    }
+  });
+
+  app.get("/api/admin/cameras/:id/snapshot", isAuthenticated, async (req, res) => {
+    try {
+      const camera = await storage.getCamera(req.params.id);
+      if (!camera) {
+        return res.status(404).json({ message: "Camera not found" });
+      }
+
+      const result = await fetchSnapshot({
+        hostname: camera.hostname,
+        portaHttp: camera.portaHttp,
+        usuario: camera.usuario,
+        senha: camera.senha,
+        marca: camera.marca || "reolink",
+      }, true);
+
+      if (result.sucesso && result.imageBuffer) {
+        res.set("Content-Type", result.contentType || "image/jpeg");
+        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.send(result.imageBuffer);
+      } else {
+        res.status(503).json({ 
+          message: result.mensagem || "Não foi possível obter snapshot da câmera" 
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching snapshot:", error);
+      res.status(500).json({ message: "Erro ao buscar snapshot" });
     }
   });
 

@@ -461,14 +461,17 @@ export default function CamerasPage() {
                       name="hostname"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Hostname / NO-IP</FormLabel>
+                          <FormLabel>Hostname / IP / NO-IP</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="Ex: cameras-sp.ddns.net"
+                              placeholder="Ex: timelapse-sky.ddns.net"
                               {...field}
                               data-testid="input-camera-hostname"
                             />
                           </FormControl>
+                          <p className="text-xs text-muted-foreground">
+                            Apenas o endereço, sem http:// ou porta. Ex: cameras.ddns.net ou 192.168.1.100
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}
