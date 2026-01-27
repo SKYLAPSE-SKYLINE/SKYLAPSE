@@ -48,7 +48,22 @@ function buildSnapshotUrlHttps(config: CameraConfig): string {
 
 export async function fetchSnapshot(config: CameraConfig, useHttps: boolean = false): Promise<SnapshotResult> {
   return new Promise((resolve) => {
-    const url = useHttps ? buildSnapshotUrlHttps(config) : buildSnapshotUrl(config);
+    let cleanHostname = config.hostname;
+    if (cleanHostname.startsWith("http://")) {
+      cleanHostname = cleanHostname.replace("http://", "");
+    }
+    if (cleanHostname.startsWith("https://")) {
+      cleanHostname = cleanHostname.replace("https://", "");
+    }
+    if (cleanHostname.includes("/")) {
+      cleanHostname = cleanHostname.split("/")[0];
+    }
+    if (cleanHostname.includes(":")) {
+      cleanHostname = cleanHostname.split(":")[0];
+    }
+    
+    const cleanConfig = { ...config, hostname: cleanHostname };
+    const url = useHttps ? buildSnapshotUrlHttps(cleanConfig) : buildSnapshotUrl(cleanConfig);
     const { hostname, portaHttp, usuario, senha, marca } = config;
     
     const options: http.RequestOptions | https.RequestOptions = {
