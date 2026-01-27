@@ -35,7 +35,7 @@ export default function CameraLivePage() {
       setRefreshKey((k) => k + 1);
       setImageError(false);
       setImageLoading(true);
-    }, 5000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
