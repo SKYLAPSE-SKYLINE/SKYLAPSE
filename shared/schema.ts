@@ -23,6 +23,8 @@ export const locations = pgTable("locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   nome: text("nome").notNull(),
   endereco: text("endereco"),
+  cidade: text("cidade"),
+  estado: text("estado"),
   descricao: text("descricao"),
   clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "cascade" }),
   status: text("status").default("ativo").notNull(),

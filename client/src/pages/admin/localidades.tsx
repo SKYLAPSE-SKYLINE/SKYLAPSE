@@ -38,10 +38,13 @@ import { Plus, Pencil, Trash2, MapPin, Camera } from "lucide-react";
 import type { Location, Client, LocationWithClient } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { brazilStates, getCitiesByState } from "@/lib/brazil-data";
 
 const locationFormSchema = z.object({
   nome: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
   endereco: z.string().optional(),
+  estado: z.string().min(1, "Selecione um estado"),
+  cidade: z.string().min(1, "Selecione uma cidade"),
   descricao: z.string().optional(),
   clienteId: z.string().min(1, "Selecione um cliente"),
 });
@@ -66,10 +69,15 @@ export default function LocalidadesPage() {
     defaultValues: {
       nome: "",
       endereco: "",
+      estado: "",
+      cidade: "",
       descricao: "",
       clienteId: "",
     },
   });
+
+  const selectedEstado = form.watch("estado");
+  const availableCities = selectedEstado ? getCitiesByState(selectedEstado) : [];
 
   const createMutation = useMutation({
     mutationFn: async (data: LocationFormValues) => {
@@ -118,6 +126,8 @@ export default function LocalidadesPage() {
       form.reset({
         nome: location.nome,
         endereco: location.endereco || "",
+        estado: location.estado || "",
+        cidade: location.cidade || "",
         descricao: location.descricao || "",
         clienteId: location.clienteId || "",
       });
@@ -126,6 +136,8 @@ export default function LocalidadesPage() {
       form.reset({
         nome: "",
         endereco: "",
+        estado: "",
+        cidade: "",
         descricao: "",
         clienteId: "",
       });
@@ -159,7 +171,9 @@ export default function LocalidadesPage() {
           <div>
             <p className="font-medium">{location.nome}</p>
             <p className="text-xs text-muted-foreground">
-              {location.endereco || "Endereço não informado"}
+              {location.cidade && location.estado
+                ? `${location.cidade}, ${location.estado}`
+                : location.endereco || "Localização não informada"}
             </p>
           </div>
         </div>
@@ -301,6 +315,66 @@ export default function LocalidadesPage() {
                       </FormItem>
                     )}
                   />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="estado"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Estado</FormLabel>
+                          <Select
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              form.setValue("cidade", "");
+                            }}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-location-state">
+                                <SelectValue placeholder="Selecione o estado" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {brazilStates.map((state) => (
+                                <SelectItem key={state.sigla} value={state.sigla}>
+                                  {state.nome} ({state.sigla})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="cidade"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cidade</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                            disabled={!selectedEstado}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-location-city">
+                                <SelectValue placeholder={selectedEstado ? "Selecione a cidade" : "Selecione o estado primeiro"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availableCities.map((city) => (
+                                <SelectItem key={city} value={city}>
+                                  {city}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   <FormField
                     control={form.control}
                     name="endereco"
@@ -309,7 +383,7 @@ export default function LocalidadesPage() {
                         <FormLabel>Endereço</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Endereço completo"
+                            placeholder="Rua, número, bairro..."
                             {...field}
                             data-testid="input-location-address"
                           />
