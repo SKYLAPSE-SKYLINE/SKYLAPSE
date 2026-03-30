@@ -436,12 +436,30 @@ export async function registerRoutes(
     }
   });
 
+  // Builds a safe admin DTO for a client account: never includes senhaHash or camera credentials
+  function toSafeAccountDTO(account: Awaited<ReturnType<typeof storage.getClientAccount>>) {
+    if (!account) return null;
+    return {
+      id: account.id,
+      nome: account.nome,
+      email: account.email,
+      clienteId: account.clienteId,
+      status: account.status,
+      createdAt: account.createdAt,
+      cliente: account.cliente
+        ? { id: account.cliente.id, nome: account.cliente.nome }
+        : null,
+      // Only expose camera IDs — never include host/usuario/senha/port
+      cameraIds: (account.cameraAccess ?? []).map((a) => a.cameraId),
+      camerasCount: (account.cameraAccess ?? []).length,
+    };
+  }
+
   // Client Accounts (admin management)
   app.get("/api/admin/client-accounts", isAuthenticated, async (req, res) => {
     try {
       const accounts = await storage.getClientAccounts();
-      const safeAccounts = accounts.map(({ senhaHash, ...rest }) => rest);
-      res.json(safeAccounts);
+      res.json(accounts.map((a) => toSafeAccountDTO(a)));
     } catch (error) {
       console.error("Error fetching client accounts:", error);
       res.status(500).json({ message: "Failed to fetch client accounts" });
@@ -452,8 +470,7 @@ export async function registerRoutes(
     try {
       const account = await storage.getClientAccount(req.params.id);
       if (!account) return res.status(404).json({ message: "Account not found" });
-      const { senhaHash, ...safe } = account;
-      res.json(safe);
+      res.json(toSafeAccountDTO(account));
     } catch (error) {
       console.error("Error fetching client account:", error);
       res.status(500).json({ message: "Failed to fetch client account" });
@@ -479,8 +496,7 @@ export async function registerRoutes(
         await storage.setClientCameraAccess(account.id, data.cameraIds);
       }
       const full = await storage.getClientAccount(account.id);
-      const { senhaHash: _, ...safe } = full!;
-      res.status(201).json(safe);
+      res.status(201).json(toSafeAccountDTO(full));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -518,8 +534,7 @@ export async function registerRoutes(
         await storage.setClientCameraAccess(account.id, cameraIds);
       }
       const full = await storage.getClientAccount(account.id);
-      const { senhaHash: _, ...safe } = full!;
-      res.json(safe);
+      res.json(toSafeAccountDTO(full));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -597,8 +612,16 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Conta não encontrada" });
       }
       const cameraIds = await storage.getClientCameraIds(account.id);
-      const { senhaHash, ...safe } = account;
-      res.json({ ...safe, cameraIds });
+      // Return a strict DTO — never spread account to avoid leaking camera credentials
+      res.json({
+        id: account.id,
+        nome: account.nome,
+        email: account.email,
+        clienteId: account.clienteId,
+        status: account.status,
+        createdAt: account.createdAt,
+        cameraIds,
+      });
     } catch (error) {
       console.error("Error fetching client me:", error);
       res.status(500).json({ message: "Erro ao buscar dados" });

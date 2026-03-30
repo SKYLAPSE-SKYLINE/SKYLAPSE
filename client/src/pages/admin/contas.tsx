@@ -48,8 +48,9 @@ type ClientAccountSafe = {
   email: string;
   status: string;
   createdAt: string;
-  cliente?: Client;
-  cameraAccess?: { cameraId: string; camera?: CameraType & { localidade?: { nome: string } } }[];
+  cliente: { id: string; nome: string } | null;
+  cameraIds: string[];
+  camerasCount: number;
 };
 
 type CameraWithLocation = CameraType & {
@@ -156,7 +157,7 @@ export default function ContasPage() {
         senha: "",
         clienteId: account.clienteId || "none",
         status: account.status as "ativo" | "inativo",
-        cameraIds: account.cameraAccess?.map((a) => a.cameraId) || [],
+        cameraIds: account.cameraIds || [],
       });
     } else {
       setEditingAccount(null);
@@ -246,7 +247,7 @@ export default function ContasPage() {
       key: "cameras",
       header: "Câmeras",
       cell: (account: ClientAccountSafe) => {
-        const count = account.cameraAccess?.length || 0;
+        const count = account.camerasCount ?? 0;
         return (
           <div className="flex items-center gap-1">
             <Camera className="h-3.5 w-3.5 text-muted-foreground" />
