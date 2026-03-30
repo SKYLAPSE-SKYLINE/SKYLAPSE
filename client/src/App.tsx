@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { LoadingScreen } from "@/components/loading-spinner";
+import { useEffect } from "react";
 
 import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
@@ -27,12 +28,11 @@ function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
     retry: false,
   });
 
-  if (isLoading) return <LoadingScreen />;
+  useEffect(() => {
+    if (isError) navigate("/login");
+  }, [isError, navigate]);
 
-  if (isError) {
-    navigate("/login");
-    return null;
-  }
+  if (isLoading || isError) return <LoadingScreen />;
 
   return <>{children}</>;
 }

@@ -564,10 +564,15 @@ export async function registerRoutes(
   // Client login (JWT-based, separate from admin Replit Auth session)
   app.post("/api/client/login", async (req, res) => {
     try {
-      const { email, senha } = req.body;
-      if (!email || !senha) {
-        return res.status(400).json({ message: "E-mail e senha são obrigatórios" });
+      const loginSchema = z.object({
+        email: z.string().email("E-mail inválido"),
+        senha: z.string().min(1, "Senha é obrigatória"),
+      });
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
       }
+      const { email, senha } = parsed.data;
       const account = await storage.getClientAccountByEmail(email);
       if (!account) {
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
