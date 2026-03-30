@@ -1,12 +1,13 @@
 import { 
   clients, locations, cameras, captures, timelapses,
-  clientAccounts, clientCameraAccess,
+  clientAccounts, clientCameraAccess, adminAccounts,
   type Client, type InsertClient,
   type Location, type InsertLocation,
   type Camera, type InsertCamera,
   type Capture, type InsertCapture,
   type Timelapse, type InsertTimelapse,
   type ClientAccount, type ClientAccountWithRelations,
+  type AdminAccount,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -59,6 +60,15 @@ export interface IStorage {
   deleteClientAccount(id: string): Promise<boolean>;
   setClientCameraAccess(clientAccountId: string, cameraIds: string[]): Promise<void>;
   getClientCameraIds(clientAccountId: string): Promise<string[]>;
+
+  // Admin Accounts
+  getAdminAccounts(): Promise<Omit<AdminAccount, "senhaHash">[]>;
+  getAdminAccount(id: string): Promise<AdminAccount | undefined>;
+  getAdminAccountByEmail(email: string): Promise<AdminAccount | undefined>;
+  createAdminAccount(data: { nome: string; email: string; senhaHash: string }): Promise<AdminAccount>;
+  updateAdminAccount(id: string, data: Partial<{ nome: string; email: string; senhaHash: string }>): Promise<AdminAccount | undefined>;
+  deleteAdminAccount(id: string): Promise<boolean>;
+  countAdminAccounts(): Promise<number>;
 
   // Stats
   getStats(): Promise<{
@@ -328,6 +338,47 @@ export class DatabaseStorage implements IStorage {
       .from(clientCameraAccess)
       .where(eq(clientCameraAccess.clientAccountId, clientAccountId));
     return result.map((r) => r.cameraId);
+  }
+
+  // Admin Accounts
+  async getAdminAccounts(): Promise<Omit<AdminAccount, "senhaHash">[]> {
+    const result = await db.select({
+      id: adminAccounts.id,
+      nome: adminAccounts.nome,
+      email: adminAccounts.email,
+      createdAt: adminAccounts.createdAt,
+    }).from(adminAccounts).orderBy(desc(adminAccounts.createdAt));
+    return result;
+  }
+
+  async getAdminAccount(id: string): Promise<AdminAccount | undefined> {
+    const [result] = await db.select().from(adminAccounts).where(eq(adminAccounts.id, id));
+    return result;
+  }
+
+  async getAdminAccountByEmail(email: string): Promise<AdminAccount | undefined> {
+    const [result] = await db.select().from(adminAccounts).where(eq(adminAccounts.email, email));
+    return result;
+  }
+
+  async createAdminAccount(data: { nome: string; email: string; senhaHash: string }): Promise<AdminAccount> {
+    const [account] = await db.insert(adminAccounts).values(data).returning();
+    return account;
+  }
+
+  async updateAdminAccount(id: string, data: Partial<{ nome: string; email: string; senhaHash: string }>): Promise<AdminAccount | undefined> {
+    const [updated] = await db.update(adminAccounts).set(data).where(eq(adminAccounts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAdminAccount(id: string): Promise<boolean> {
+    const result = await db.delete(adminAccounts).where(eq(adminAccounts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async countAdminAccounts(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` }).from(adminAccounts);
+    return Number(result.count);
   }
 
   // Stats

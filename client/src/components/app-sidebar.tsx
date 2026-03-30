@@ -37,7 +37,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
 
   const getInitials = (name?: string | null) => {
-    if (!name) return "U";
+    if (!name) return "A";
     return name
       .split(" ")
       .map((n) => n[0])
@@ -46,9 +46,7 @@ export function AppSidebar() {
       .slice(0, 2);
   };
 
-  const displayName = user?.firstName && user?.lastName 
-    ? `${user.firstName} ${user.lastName}`
-    : user?.email || "Usuário";
+  const displayName = user?.nome || "Administrador";
 
   return (
     <Sidebar>
@@ -101,9 +99,8 @@ export function AppSidebar() {
               data-testid="button-user-menu"
             >
               <Avatar className="h-9 w-9">
-                <AvatarImage src={user?.profileImageUrl || undefined} alt={displayName} />
                 <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
-                  {getInitials(user?.firstName)}
+                  {getInitials(user?.nome)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-1 flex-col items-start text-left">

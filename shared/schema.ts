@@ -3,9 +3,6 @@ import { pgTable, text, varchar, integer, timestamp, date, index, boolean } from
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Re-export auth models
-export * from "./models/auth";
-
 // Clients table - businesses/customers using the platform
 export const clients = pgTable("clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -98,6 +95,15 @@ export const timelapses = pgTable("timelapses", {
   erroMensagem: text("erro_mensagem"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
+});
+
+// Admin accounts — platform administrators (email/password auth, separate from clients)
+export const adminAccounts = pgTable("admin_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  nome: text("nome").notNull(),
+  email: text("email").notNull().unique(),
+  senhaHash: text("senha_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Relations
@@ -227,6 +233,17 @@ export type ClientAccountWithRelations = ClientAccount & {
   cliente: Client | null;
   cameraAccess: (ClientCameraAccess & { camera: Camera | null })[];
 };
+
+export const insertAdminAccountSchema = createInsertSchema(adminAccounts).omit({
+  id: true,
+  createdAt: true,
+  senhaHash: true,
+}).extend({
+  senha: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+});
+
+export type InsertAdminAccount = z.infer<typeof insertAdminAccountSchema>;
+export type AdminAccount = typeof adminAccounts.$inferSelect;
 
 // Extended types with relations
 export type LocationWithClient = Location & { cliente?: Client };

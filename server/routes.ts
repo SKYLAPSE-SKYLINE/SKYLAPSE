@@ -1,13 +1,13 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
 import { 
   insertClientSchema, 
   insertLocationSchema, 
   insertCameraSchema,
   insertTimelapseSchema,
   insertClientAccountSchema,
+  insertAdminAccountSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import { testCameraConnection, fetchSnapshot } from "./camera-service";
@@ -18,11 +18,27 @@ declare global {
   namespace Express {
     interface Request {
       clientAccountId?: string;
+      adminAccountId?: string;
     }
   }
 }
 
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
+const ADMIN_JWT_SECRET = process.env.SESSION_SECRET! + "_admin";
+
+export const isAdminAuthenticated: RequestHandler = async (req, res, next) => {
+  const token = req.cookies?.["skylapse-admin-token"];
+  if (!token) {
+    return res.status(401).json({ message: "Não autenticado" });
+  }
+  try {
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminAccountId: string };
+    req.adminAccountId = payload.adminAccountId;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Sessão expirada ou inválida" });
+  }
+};
 
 export const isClientAuthenticated: RequestHandler = async (req, res, next) => {
   const token = req.cookies?.["skylapse-client-token"];
@@ -48,12 +64,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup authentication
-  await setupAuth(app);
-  registerAuthRoutes(app);
-
   // Admin Stats
-  app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/stats", isAdminAuthenticated, async (req, res) => {
     try {
       const stats = await storage.getStats();
       res.json(stats);
@@ -64,7 +76,7 @@ export async function registerRoutes(
   });
 
   // Clients CRUD
-  app.get("/api/admin/clients", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/clients", isAdminAuthenticated, async (req, res) => {
     try {
       const clients = await storage.getClients();
       res.json(clients);
@@ -74,7 +86,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/clients/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/clients/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const client = await storage.getClient(req.params.id);
       if (!client) {
@@ -87,7 +99,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/clients", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/clients", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertClientSchema.parse(req.body);
       const client = await storage.createClient(data);
@@ -101,7 +113,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/admin/clients/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/admin/clients/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertClientSchema.partial().parse(req.body);
       const client = await storage.updateClient(req.params.id, data);
@@ -118,7 +130,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/clients/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/admin/clients/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const deleted = await storage.deleteClient(req.params.id);
       if (!deleted) {
@@ -132,7 +144,7 @@ export async function registerRoutes(
   });
 
   // Locations CRUD
-  app.get("/api/admin/locations", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/locations", isAdminAuthenticated, async (req, res) => {
     try {
       const locations = await storage.getLocations();
       res.json(locations);
@@ -142,7 +154,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/locations/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/locations/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const location = await storage.getLocation(req.params.id);
       if (!location) {
@@ -155,7 +167,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/locations", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/locations", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertLocationSchema.parse(req.body);
       const location = await storage.createLocation(data);
@@ -169,7 +181,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/admin/locations/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/admin/locations/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertLocationSchema.partial().parse(req.body);
       const location = await storage.updateLocation(req.params.id, data);
@@ -186,7 +198,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/locations/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/admin/locations/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const deleted = await storage.deleteLocation(req.params.id);
       if (!deleted) {
@@ -200,7 +212,7 @@ export async function registerRoutes(
   });
 
   // Cameras CRUD
-  app.get("/api/admin/cameras", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras", isAdminAuthenticated, async (req, res) => {
     try {
       const cameras = await storage.getCameras();
       res.json(cameras);
@@ -210,7 +222,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/cameras/offline", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras/offline", isAdminAuthenticated, async (req, res) => {
     try {
       const cameras = await storage.getOfflineCameras();
       res.json(cameras);
@@ -220,7 +232,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/cameras/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const camera = await storage.getCamera(req.params.id);
       if (!camera) {
@@ -233,7 +245,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/cameras/:id/last-capture", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras/:id/last-capture", isAdminAuthenticated, async (req, res) => {
     try {
       const capture = await storage.getLastCapture(req.params.id);
       if (!capture) {
@@ -246,7 +258,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/cameras/:id/captures", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras/:id/captures", isAdminAuthenticated, async (req, res) => {
     try {
       const { dataInicio, dataFim } = req.query;
       const captures = await storage.getCaptures(
@@ -261,7 +273,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/cameras", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/cameras", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertCameraSchema.parse(req.body);
       const camera = await storage.createCamera(data);
@@ -275,7 +287,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/cameras/test", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/cameras/test", isAdminAuthenticated, async (req, res) => {
     try {
       const { hostname, portaHttp, usuario, senha, marca } = req.body;
       
@@ -316,7 +328,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/cameras/:id/snapshot", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/cameras/:id/snapshot", isAdminAuthenticated, async (req, res) => {
     try {
       const camera = await storage.getCamera(req.params.id);
       if (!camera) {
@@ -346,7 +358,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/admin/cameras/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/admin/cameras/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertCameraSchema.partial().parse(req.body);
       const camera = await storage.updateCamera(req.params.id, data);
@@ -363,7 +375,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/cameras/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/admin/cameras/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const deleted = await storage.deleteCamera(req.params.id);
       if (!deleted) {
@@ -377,7 +389,7 @@ export async function registerRoutes(
   });
 
   // Timelapses CRUD
-  app.get("/api/admin/timelapses", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/timelapses", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapses = await storage.getTimelapses();
       res.json(timelapses);
@@ -387,7 +399,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/timelapses/recent", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/timelapses/recent", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapses = await storage.getRecentTimelapses(5);
       res.json(timelapses);
@@ -397,7 +409,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/timelapses/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/timelapses/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapse = await storage.getTimelapse(req.params.id);
       if (!timelapse) {
@@ -410,7 +422,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/timelapses", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/timelapses", isAdminAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub;
       const data = insertTimelapseSchema.parse({
@@ -429,7 +441,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/timelapses/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/admin/timelapses/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const deleted = await storage.deleteTimelapse(req.params.id);
       if (!deleted) {
@@ -462,7 +474,7 @@ export async function registerRoutes(
   }
 
   // Client Accounts (admin management)
-  app.get("/api/admin/client-accounts", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/client-accounts", isAdminAuthenticated, async (req, res) => {
     try {
       const accounts = await storage.getClientAccounts();
       res.json(accounts.map((a) => toSafeAccountDTO(a)));
@@ -472,7 +484,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/client-accounts/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const account = await storage.getClientAccount(req.params.id);
       if (!account) return res.status(404).json({ message: "Account not found" });
@@ -483,7 +495,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/client-accounts", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/client-accounts", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertClientAccountSchema.parse(req.body);
       const existing = await storage.getClientAccountByEmail(data.email);
@@ -512,7 +524,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+  app.put("/api/admin/client-accounts/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const updateSchema = insertClientAccountSchema.partial().extend({
         senha: z.string().min(6).optional(),
@@ -550,7 +562,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/admin/client-accounts/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const deleted = await storage.deleteClientAccount(req.params.id);
       if (!deleted) return res.status(404).json({ message: "Account not found" });
@@ -606,6 +618,136 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error client login:", error);
       res.status(500).json({ message: "Erro ao fazer login" });
+    }
+  });
+
+  // ── Admin Auth ────────────────────────────────────────────────────────────
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const loginSchema = z.object({
+        email: z.string().email("E-mail inválido"),
+        senha: z.string().min(1, "Senha obrigatória"),
+      });
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
+      }
+      const { email, senha } = parsed.data;
+      const account = await storage.getAdminAccountByEmail(email);
+      if (!account) {
+        return res.status(401).json({ message: "E-mail ou senha incorretos" });
+      }
+      const valid = await bcrypt.compare(senha, account.senhaHash);
+      if (!valid) {
+        return res.status(401).json({ message: "E-mail ou senha incorretos" });
+      }
+      const token = jwt.sign(
+        { adminAccountId: account.id },
+        ADMIN_JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+      res.cookie("skylapse-admin-token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        sameSite: "lax",
+      });
+      res.json({ id: account.id, nome: account.nome, email: account.email });
+    } catch (error) {
+      console.error("Error admin login:", error);
+      res.status(500).json({ message: "Erro ao fazer login" });
+    }
+  });
+
+  app.post("/api/admin/logout", (req, res) => {
+    res.clearCookie("skylapse-admin-token");
+    res.json({ message: "Logout realizado" });
+  });
+
+  app.get("/api/admin/me", isAdminAuthenticated, async (req, res) => {
+    try {
+      const account = await storage.getAdminAccount(req.adminAccountId!);
+      if (!account) {
+        res.clearCookie("skylapse-admin-token");
+        return res.status(401).json({ message: "Conta não encontrada" });
+      }
+      res.json({ id: account.id, nome: account.nome, email: account.email });
+    } catch (error) {
+      console.error("Error admin me:", error);
+      res.status(500).json({ message: "Erro ao buscar dados" });
+    }
+  });
+
+  // ── Admin Account Management (admins managing admin accounts) ─────────────
+  app.get("/api/admin/accounts", isAdminAuthenticated, async (req, res) => {
+    try {
+      const accounts = await storage.getAdminAccounts();
+      res.json(accounts);
+    } catch (error) {
+      console.error("Error fetching admin accounts:", error);
+      res.status(500).json({ message: "Erro ao buscar contas" });
+    }
+  });
+
+  app.post("/api/admin/accounts", isAdminAuthenticated, async (req, res) => {
+    try {
+      const data = insertAdminAccountSchema.parse(req.body);
+      const senhaHash = await bcrypt.hash(data.senha, 12);
+      const account = await storage.createAdminAccount({
+        nome: data.nome,
+        email: data.email,
+        senhaHash,
+      });
+      res.status(201).json({ id: account.id, nome: account.nome, email: account.email, createdAt: account.createdAt });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error creating admin account:", error);
+      res.status(500).json({ message: "Erro ao criar conta" });
+    }
+  });
+
+  app.put("/api/admin/accounts/:id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const updateSchema = z.object({
+        nome: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        senha: z.string().min(6).optional(),
+      });
+      const data = updateSchema.parse(req.body);
+      const updateData: Partial<{ nome: string; email: string; senhaHash: string }> = {};
+      if (data.nome) updateData.nome = data.nome;
+      if (data.email) updateData.email = data.email;
+      if (data.senha) updateData.senhaHash = await bcrypt.hash(data.senha, 12);
+      const updated = await storage.updateAdminAccount(req.params.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "Conta não encontrada" });
+      }
+      res.json({ id: updated.id, nome: updated.nome, email: updated.email, createdAt: updated.createdAt });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error updating admin account:", error);
+      res.status(500).json({ message: "Erro ao atualizar conta" });
+    }
+  });
+
+  app.delete("/api/admin/accounts/:id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.countAdminAccounts();
+      if (count <= 1) {
+        return res.status(400).json({ message: "Não é possível excluir a única conta administradora" });
+      }
+      const deleted = await storage.deleteAdminAccount(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Conta não encontrada" });
+      }
+      res.json({ message: "Conta excluída" });
+    } catch (error) {
+      console.error("Error deleting admin account:", error);
+      res.status(500).json({ message: "Erro ao excluir conta" });
     }
   });
 

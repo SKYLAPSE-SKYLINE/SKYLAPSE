@@ -8,7 +8,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { LoadingScreen } from "@/components/loading-spinner";
 import { useEffect } from "react";
 
-import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import AdminDashboard from "@/pages/admin/dashboard";
 import ClientesPage from "@/pages/admin/clientes";
@@ -18,7 +17,8 @@ import CameraLivePage from "@/pages/admin/camera-live";
 import CameraGalleryPage from "@/pages/admin/camera-gallery";
 import TimelapsesPage from "@/pages/admin/timelapses";
 import ContasPage from "@/pages/admin/contas";
-import ClientLoginPage from "@/pages/client-login";
+import AdminSettingsPage from "@/pages/admin/settings";
+import LoginPage from "@/pages/client-login";
 import ClienteDashboard from "@/pages/cliente/dashboard";
 
 function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -37,44 +37,59 @@ function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
+  const [, navigate] = useLocation();
+  const { isLoading, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) navigate("/login");
+  }, [isLoading, isAuthenticated, navigate]);
+
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <LoadingScreen />;
+
+  return <>{children}</>;
+}
+
 function AdminRoutes() {
   return (
-    <Switch>
-      <Route path="/admin/dashboard" component={AdminDashboard} />
-      <Route path="/admin/clientes" component={ClientesPage} />
-      <Route path="/admin/contas" component={ContasPage} />
-      <Route path="/admin/localidades" component={LocalidadesPage} />
-      <Route path="/admin/cameras" component={CamerasPage} />
-      <Route path="/admin/cameras/:id/live" component={CameraLivePage} />
-      <Route path="/admin/cameras/:id/galeria" component={CameraGalleryPage} />
-      <Route path="/admin/timelapses" component={TimelapsesPage} />
-      <Route path="/">
-        <AdminDashboard />
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <AdminProtectedRoute>
+      <Switch>
+        <Route path="/admin/dashboard" component={AdminDashboard} />
+        <Route path="/admin/clientes" component={ClientesPage} />
+        <Route path="/admin/contas" component={ContasPage} />
+        <Route path="/admin/localidades" component={LocalidadesPage} />
+        <Route path="/admin/cameras" component={CamerasPage} />
+        <Route path="/admin/cameras/:id/live" component={CameraLivePage} />
+        <Route path="/admin/cameras/:id/galeria" component={CameraGalleryPage} />
+        <Route path="/admin/timelapses" component={TimelapsesPage} />
+        <Route path="/admin/configuracoes" component={AdminSettingsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </AdminProtectedRoute>
   );
 }
 
 function Router() {
-  const { user, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
-  // Client portal routes are always accessible (JWT auth handled inside)
   return (
     <Switch>
-      <Route path="/login" component={ClientLoginPage} />
+      <Route path="/login" component={LoginPage} />
       <Route path="/cliente/dashboard">
         <ClientProtectedRoute>
           <ClienteDashboard />
         </ClientProtectedRoute>
       </Route>
-      <Route>
-        {user ? <AdminRoutes /> : <LandingPage />}
+      <Route path="/admin/:rest*">
+        <AdminRoutes />
       </Route>
+      <Route path="/" component={LoginPage} />
+      <Route component={NotFound} />
     </Switch>
   );
 }

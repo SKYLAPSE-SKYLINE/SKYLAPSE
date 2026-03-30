@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Camera, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,11 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function ClientLoginPage() {
+export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -38,10 +39,42 @@ export default function ClientLoginPage() {
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormValues) => {
-      return apiRequest("POST", "/api/client/login", data);
+      // Try admin login first; if 401 try client login
+      const adminRes = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (adminRes.ok) {
+        const user = await adminRes.json();
+        return { role: "admin" as const, user };
+      }
+      if (adminRes.status !== 401) {
+        const err = await adminRes.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message || "Erro ao fazer login");
+      }
+      // Try client login
+      const clientRes = await fetch("/api/client/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (clientRes.ok) {
+        const user = await clientRes.json();
+        return { role: "client" as const, user };
+      }
+      const err = await clientRes.json().catch(() => ({}));
+      throw new Error((err as { message?: string }).message || "E-mail ou senha incorretos");
     },
-    onSuccess: () => {
-      navigate("/cliente/dashboard");
+    onSuccess: ({ role }) => {
+      queryClient.clear();
+      if (role === "admin") {
+        navigate("/admin/dashboard");
+      } else {
+        navigate("/cliente/dashboard");
+      }
     },
     onError: (error: Error) => {
       toast({ title: error.message || "Erro ao fazer login", variant: "destructive" });
@@ -61,7 +94,7 @@ export default function ClientLoginPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">SKYLAPSE</h1>
-            <p className="text-sm text-muted-foreground">Portal do Cliente</p>
+            <p className="text-sm text-muted-foreground">Monitoramento de câmeras</p>
           </div>
         </div>
 
@@ -69,7 +102,7 @@ export default function ClientLoginPage() {
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-xl">Acesso ao portal</CardTitle>
             <CardDescription>
-              Entre com seu e-mail e senha para acessar suas câmeras
+              Entre com seu e-mail e senha para continuar
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -87,7 +120,7 @@ export default function ClientLoginPage() {
                           placeholder="seu@email.com"
                           autoComplete="email"
                           {...field}
-                          data-testid="input-client-login-email"
+                          data-testid="input-login-email"
                         />
                       </FormControl>
                       <FormMessage />
@@ -107,7 +140,7 @@ export default function ClientLoginPage() {
                             placeholder="••••••••"
                             autoComplete="current-password"
                             {...field}
-                            data-testid="input-client-login-password"
+                            data-testid="input-login-password"
                           />
                           <Button
                             type="button"
@@ -133,7 +166,7 @@ export default function ClientLoginPage() {
                   type="submit"
                   className="w-full"
                   disabled={loginMutation.isPending}
-                  data-testid="button-client-login-submit"
+                  data-testid="button-login-submit"
                 >
                   {loginMutation.isPending ? "Entrando..." : "Entrar"}
                 </Button>

@@ -3,6 +3,8 @@ import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { storage } from "./storage";
+import bcrypt from "bcryptjs";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,7 +63,27 @@ app.use((req, res, next) => {
   next();
 });
 
+async function seedAdminAccount() {
+  const count = await storage.countAdminAccounts();
+  if (count === 0) {
+    const tempPassword = "skylapse@2024";
+    const senhaHash = await bcrypt.hash(tempPassword, 12);
+    await storage.createAdminAccount({
+      nome: "Administrador",
+      email: "admin@skylapse.com",
+      senhaHash,
+    });
+    console.log("═══════════════════════════════════════════════════════");
+    console.log("  SKYLAPSE — Conta admin criada automaticamente");
+    console.log("  E-mail: admin@skylapse.com");
+    console.log(`  Senha:  ${tempPassword}`);
+    console.log("  Altere as credenciais após o primeiro login!");
+    console.log("═══════════════════════════════════════════════════════");
+  }
+}
+
 (async () => {
+  await seedAdminAccount();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
