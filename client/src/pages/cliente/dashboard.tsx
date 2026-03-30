@@ -183,17 +183,16 @@ export default function ClienteDashboard() {
             {cameras.map((cam) => (
               <Card
                 key={cam.id}
-                className="overflow-hidden flex flex-col"
+                className="overflow-hidden flex flex-col cursor-pointer group/card hover:shadow-md transition-shadow"
                 data-testid={`card-camera-${cam.id}`}
+                onClick={() => navigate(`/cliente/cameras/${cam.id}/capturas`)}
               >
                 <div
-                  className="relative aspect-video bg-muted flex items-center justify-center cursor-pointer group"
-                  onClick={() => setSnapshotCamera(cam)}
-                  data-testid={`button-snapshot-${cam.id}`}
+                  className="relative aspect-video bg-muted flex items-center justify-center"
                 >
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Eye className="h-8 w-8 text-white" />
-                    <span className="text-white text-sm ml-2 font-medium">Ver ao vivo</span>
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity">
+                    <Camera className="h-8 w-8 text-white" />
+                    <span className="text-white text-sm ml-2 font-medium">Ver galeria</span>
                   </div>
                   <Camera className="h-10 w-10 text-muted-foreground/30" />
                 </div>
@@ -239,7 +238,7 @@ export default function ClienteDashboard() {
                     variant="outline"
                     size="sm"
                     className="flex-1 text-xs"
-                    onClick={() => setSnapshotCamera(cam)}
+                    onClick={(e) => { e.stopPropagation(); setSnapshotCamera(cam); }}
                     data-testid={`button-live-${cam.id}`}
                   >
                     <Eye className="h-3 w-3 mr-1" />
@@ -249,6 +248,7 @@ export default function ClienteDashboard() {
                     variant="default"
                     size="sm"
                     className="flex-1 text-xs"
+                    onClick={(e) => e.stopPropagation()}
                     asChild
                   >
                     <Link href={`/cliente/cameras/${cam.id}/capturas`} data-testid={`button-gallery-${cam.id}`}>
