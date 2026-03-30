@@ -1,6 +1,6 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -19,6 +19,23 @@ import TimelapsesPage from "@/pages/admin/timelapses";
 import ContasPage from "@/pages/admin/contas";
 import ClientLoginPage from "@/pages/client-login";
 import ClienteDashboard from "@/pages/cliente/dashboard";
+
+function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
+  const [, navigate] = useLocation();
+  const { isLoading, isError } = useQuery<unknown>({
+    queryKey: ["/api/client/me"],
+    retry: false,
+  });
+
+  if (isLoading) return <LoadingScreen />;
+
+  if (isError) {
+    navigate("/login");
+    return null;
+  }
+
+  return <>{children}</>;
+}
 
 function AdminRoutes() {
   return (
@@ -48,9 +65,13 @@ function Router() {
 
   return (
     <Switch>
-      {/* Client portal routes — JWT auth, no Replit Auth needed */}
+      {/* Client portal routes — JWT auth, protected by ClientProtectedRoute */}
       <Route path="/login" component={ClientLoginPage} />
-      <Route path="/cliente/dashboard" component={ClienteDashboard} />
+      <Route path="/cliente/dashboard">
+        <ClientProtectedRoute>
+          <ClienteDashboard />
+        </ClientProtectedRoute>
+      </Route>
 
       {/* Admin routes — require Replit Auth */}
       {user ? (

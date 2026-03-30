@@ -224,8 +224,8 @@ export type InsertClientAccount = z.infer<typeof insertClientAccountSchema>;
 export type ClientAccount = typeof clientAccounts.$inferSelect;
 export type ClientCameraAccess = typeof clientCameraAccess.$inferSelect;
 export type ClientAccountWithRelations = ClientAccount & {
-  cliente?: Client;
-  cameraAccess?: (ClientCameraAccess & { camera?: Camera })[];
+  cliente: Client | null;
+  cameraAccess: (ClientCameraAccess & { camera: Camera | null })[];
 };
 
 // Extended types with relations

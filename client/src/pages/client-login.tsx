@@ -43,15 +43,8 @@ export default function ClientLoginPage() {
     onSuccess: () => {
       navigate("/cliente/dashboard");
     },
-    onError: async (error: unknown) => {
-      let msg = "Erro ao fazer login";
-      try {
-        if (error instanceof Error && "response" in error) {
-          const body = await (error as { response: { json: () => Promise<{ message?: string }> } }).response.json();
-          if (body?.message) msg = body.message;
-        }
-      } catch {}
-      toast({ title: msg, variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: error.message || "Erro ao fazer login", variant: "destructive" });
     },
   });
 
