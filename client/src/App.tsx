@@ -20,6 +20,7 @@ import ContasPage from "@/pages/admin/contas";
 import AdminSettingsPage from "@/pages/admin/settings";
 import LoginPage from "@/pages/client-login";
 import ClienteDashboard from "@/pages/cliente/dashboard";
+import ClienteCameraCaptures from "@/pages/cliente/camera-captures";
 
 function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
@@ -83,6 +84,11 @@ function Router() {
       <Route path="/cliente/dashboard">
         <ClientProtectedRoute>
           <ClienteDashboard />
+        </ClientProtectedRoute>
+      </Route>
+      <Route path="/cliente/cameras/:id/capturas">
+        <ClientProtectedRoute>
+          <ClienteCameraCaptures />
         </ClientProtectedRoute>
       </Route>
       <Route path="/admin/:rest*">

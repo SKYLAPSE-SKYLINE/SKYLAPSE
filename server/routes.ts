@@ -751,6 +751,84 @@ export async function registerRoutes(
     }
   });
 
+  // ── Client Camera Endpoints ───────────────────────────────────────────────
+  // Safe DTO: never expose hostname, usuario, senha, or any credential to the client
+  function toClientCameraDTO(camera: Awaited<ReturnType<typeof storage.getCamera>>, localidade?: { nome: string; cidade?: string | null; estado?: string | null } | null) {
+    if (!camera) return null;
+    return {
+      id: camera.id,
+      nome: camera.nome,
+      marca: camera.marca,
+      modelo: camera.modelo,
+      status: camera.status,
+      ultimaCaptura: camera.ultimaCaptura,
+      intervaloCaptura: camera.intervaloCaptura,
+      localidade: localidade ? { nome: localidade.nome, cidade: localidade.cidade, estado: localidade.estado } : null,
+    };
+  }
+
+  app.get("/api/client/cameras", isClientAuthenticated, async (req, res) => {
+    try {
+      const cameraIds = await storage.getClientCameraIds(req.clientAccountId!);
+      if (cameraIds.length === 0) return res.json([]);
+      const allCameras = await storage.getCameras();
+      const clientCameras = allCameras
+        .filter((c) => cameraIds.includes(c.id))
+        .map((c) => toClientCameraDTO(c, c.localidade));
+      res.json(clientCameras);
+    } catch (error) {
+      console.error("Error fetching client cameras:", error);
+      res.status(500).json({ message: "Erro ao buscar câmeras" });
+    }
+  });
+
+  app.get("/api/client/cameras/:id/captures", isClientAuthenticated, async (req, res) => {
+    try {
+      const allowedIds = await storage.getClientCameraIds(req.clientAccountId!);
+      if (!allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ message: "Acesso negado a esta câmera" });
+      }
+      const { dataInicio, dataFim } = req.query;
+      const result = await storage.getCaptures(
+        req.params.id,
+        dataInicio as string | undefined,
+        dataFim as string | undefined
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching client captures:", error);
+      res.status(500).json({ message: "Erro ao buscar capturas" });
+    }
+  });
+
+  app.get("/api/client/cameras/:id/snapshot", isClientAuthenticated, async (req, res) => {
+    try {
+      const allowedIds = await storage.getClientCameraIds(req.clientAccountId!);
+      if (!allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ message: "Acesso negado a esta câmera" });
+      }
+      const camera = await storage.getCamera(req.params.id);
+      if (!camera) return res.status(404).json({ message: "Câmera não encontrada" });
+      const result = await fetchSnapshot({
+        hostname: camera.hostname,
+        portaHttp: camera.portaHttp,
+        usuario: camera.usuario,
+        senha: camera.senha,
+        marca: camera.marca || "reolink",
+      });
+      if (result.sucesso && result.imageBuffer) {
+        res.set("Content-Type", result.contentType || "image/jpeg");
+        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.send(result.imageBuffer);
+      } else {
+        res.status(503).json({ message: result.mensagem || "Câmera indisponível" });
+      }
+    } catch (error) {
+      console.error("Error fetching client snapshot:", error);
+      res.status(500).json({ message: "Erro ao buscar imagem" });
+    }
+  });
+
   app.post("/api/client/logout", (req, res) => {
     res.clearCookie("skylapse-client-token");
     res.json({ message: "Logout realizado" });
