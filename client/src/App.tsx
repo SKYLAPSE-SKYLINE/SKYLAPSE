@@ -63,22 +63,18 @@ function Router() {
     return <LoadingScreen />;
   }
 
+  // Client portal routes are always accessible (JWT auth handled inside)
   return (
     <Switch>
-      {/* Client portal routes — JWT auth, protected by ClientProtectedRoute */}
       <Route path="/login" component={ClientLoginPage} />
       <Route path="/cliente/dashboard">
         <ClientProtectedRoute>
           <ClienteDashboard />
         </ClientProtectedRoute>
       </Route>
-
-      {/* Admin routes — require Replit Auth */}
-      {user ? (
-        <Route path="/:rest*" component={AdminRoutes} />
-      ) : (
-        <Route path="/:rest*" component={LandingPage} />
-      )}
+      <Route>
+        {user ? <AdminRoutes /> : <LandingPage />}
+      </Route>
     </Switch>
   );
 }
