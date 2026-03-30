@@ -24,13 +24,19 @@ declare global {
 
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 
-export const isClientAuthenticated: RequestHandler = (req, res, next) => {
+export const isClientAuthenticated: RequestHandler = async (req, res, next) => {
   const token = req.cookies?.["skylapse-client-token"];
   if (!token) {
     return res.status(401).json({ message: "Não autenticado" });
   }
   try {
     const payload = jwt.verify(token, CLIENT_JWT_SECRET) as { clientAccountId: string };
+    // Check account still exists and is active on every request — revokes deactivated sessions immediately
+    const account = await storage.getClientAccountStatus(payload.clientAccountId);
+    if (!account || account.status !== "ativo") {
+      res.clearCookie("skylapse-client-token");
+      return res.status(401).json({ message: "Conta inativa ou não encontrada" });
+    }
     req.clientAccountId = payload.clientAccountId;
     next();
   } catch {

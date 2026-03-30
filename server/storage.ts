@@ -52,6 +52,7 @@ export interface IStorage {
   // Client Accounts
   getClientAccounts(): Promise<ClientAccountWithRelations[]>;
   getClientAccount(id: string): Promise<ClientAccountWithRelations | undefined>;
+  getClientAccountStatus(id: string): Promise<Pick<ClientAccount, "id" | "status"> | undefined>;
   getClientAccountByEmail(email: string): Promise<ClientAccount | undefined>;
   createClientAccount(data: { clienteId?: string | null; nome: string; email: string; senhaHash: string; status?: string }): Promise<ClientAccount>;
   updateClientAccount(id: string, data: Partial<{ clienteId: string | null; nome: string; email: string; senhaHash: string; status: string }>): Promise<ClientAccount | undefined>;
@@ -263,6 +264,14 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(clientAccounts.createdAt),
     });
+    return result;
+  }
+
+  async getClientAccountStatus(id: string): Promise<Pick<ClientAccount, "id" | "status"> | undefined> {
+    const [result] = await db
+      .select({ id: clientAccounts.id, status: clientAccounts.status })
+      .from(clientAccounts)
+      .where(eq(clientAccounts.id, id));
     return result;
   }
 
