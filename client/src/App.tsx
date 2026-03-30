@@ -17,18 +17,20 @@ import CameraLivePage from "@/pages/admin/camera-live";
 import CameraGalleryPage from "@/pages/admin/camera-gallery";
 import TimelapsesPage from "@/pages/admin/timelapses";
 import ContasPage from "@/pages/admin/contas";
+import ClientLoginPage from "@/pages/client-login";
+import ClienteDashboard from "@/pages/cliente/dashboard";
 
-function AuthenticatedRoutes() {
+function AdminRoutes() {
   return (
     <Switch>
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/clientes" component={ClientesPage} />
+      <Route path="/admin/contas" component={ContasPage} />
       <Route path="/admin/localidades" component={LocalidadesPage} />
       <Route path="/admin/cameras" component={CamerasPage} />
       <Route path="/admin/cameras/:id/live" component={CameraLivePage} />
       <Route path="/admin/cameras/:id/galeria" component={CameraGalleryPage} />
       <Route path="/admin/timelapses" component={TimelapsesPage} />
-      <Route path="/admin/contas" component={ContasPage} />
       <Route path="/">
         <AdminDashboard />
       </Route>
@@ -44,16 +46,20 @@ function Router() {
     return <LoadingScreen />;
   }
 
-  if (!user) {
-    return (
-      <Switch>
-        <Route path="/" component={LandingPage} />
-        <Route component={LandingPage} />
-      </Switch>
-    );
-  }
+  return (
+    <Switch>
+      {/* Client portal routes — JWT auth, no Replit Auth needed */}
+      <Route path="/login" component={ClientLoginPage} />
+      <Route path="/cliente/dashboard" component={ClienteDashboard} />
 
-  return <AuthenticatedRoutes />;
+      {/* Admin routes — require Replit Auth */}
+      {user ? (
+        <Route path="/:rest*" component={AdminRoutes} />
+      ) : (
+        <Route path="/:rest*" component={LandingPage} />
+      )}
+    </Switch>
+  );
 }
 
 function App() {

@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth";
@@ -12,6 +12,23 @@ import {
 import { z } from "zod";
 import { testCameraConnection, fetchSnapshot } from "./camera-service";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
+
+export const isClientAuthenticated: RequestHandler = (req, res, next) => {
+  const token = req.cookies?.["skylapse-client-token"];
+  if (!token) {
+    return res.status(401).json({ message: "Não autenticado" });
+  }
+  try {
+    const payload = jwt.verify(token, CLIENT_JWT_SECRET) as { clientAccountId: string };
+    (req as any).clientAccountId = payload.clientAccountId;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Sessão expirada ou inválida" });
+  }
+};
 
 export async function registerRoutes(
   httpServer: Server,
@@ -467,7 +484,21 @@ export async function registerRoutes(
 
   app.put("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
     try {
-      const { senha, cameraIds, ...rest } = req.body;
+      const updateSchema = insertClientAccountSchema.partial().extend({
+        senha: z.string().min(6).optional(),
+        cameraIds: z.array(z.string()).optional(),
+      });
+      const parsed = updateSchema.parse(req.body);
+      const { senha, cameraIds, ...rest } = parsed;
+
+      // Check email uniqueness on update
+      if (rest.email) {
+        const existing = await storage.getClientAccountByEmail(rest.email);
+        if (existing && existing.id !== req.params.id) {
+          return res.status(409).json({ message: "Já existe uma conta com este e-mail" });
+        }
+      }
+
       const updateData: Record<string, any> = { ...rest };
       if (senha && senha.length >= 6) {
         updateData.senhaHash = await bcrypt.hash(senha, 10);
@@ -481,6 +512,9 @@ export async function registerRoutes(
       const { senhaHash: _, ...safe } = full!;
       res.json(safe);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating client account:", error);
       res.status(500).json({ message: "Failed to update client account" });
     }
@@ -497,7 +531,7 @@ export async function registerRoutes(
     }
   });
 
-  // Client login (separate from admin Replit Auth)
+  // Client login (JWT-based, separate from admin Replit Auth session)
   app.post("/api/client/login", async (req, res) => {
     try {
       const { email, senha } = req.body;
@@ -516,7 +550,17 @@ export async function registerRoutes(
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const cameraIds = await storage.getClientCameraIds(account.id);
-      (req.session as any).clientAccountId = account.id;
+      const token = jwt.sign(
+        { clientAccountId: account.id },
+        CLIENT_JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+      res.cookie("skylapse-client-token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        sameSite: "lax",
+      });
       res.json({ 
         id: account.id, 
         nome: account.nome, 
@@ -531,18 +575,16 @@ export async function registerRoutes(
   });
 
   app.post("/api/client/logout", (req, res) => {
-    (req.session as any).clientAccountId = undefined;
+    res.clearCookie("skylapse-client-token");
     res.json({ message: "Logout realizado" });
   });
 
-  app.get("/api/client/me", async (req, res) => {
+  app.get("/api/client/me", isClientAuthenticated, async (req, res) => {
     try {
-      const clientAccountId = (req.session as any).clientAccountId;
-      if (!clientAccountId) {
-        return res.status(401).json({ message: "Não autenticado" });
-      }
+      const clientAccountId = (req as any).clientAccountId;
       const account = await storage.getClientAccount(clientAccountId);
       if (!account) {
+        res.clearCookie("skylapse-client-token");
         return res.status(401).json({ message: "Conta não encontrada" });
       }
       const cameraIds = await storage.getClientCameraIds(account.id);

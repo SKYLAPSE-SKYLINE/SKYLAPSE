@@ -154,7 +154,7 @@ export default function ContasPage() {
         nome: account.nome,
         email: account.email,
         senha: "",
-        clienteId: account.clienteId || "",
+        clienteId: account.clienteId || "none",
         status: account.status as "ativo" | "inativo",
         cameraIds: account.cameraAccess?.map((a) => a.cameraId) || [],
       });
@@ -181,7 +181,7 @@ export default function ContasPage() {
   const onSubmit = (data: AccountFormValues) => {
     const payload = {
       ...data,
-      clienteId: data.clienteId || undefined,
+      clienteId: (data.clienteId && data.clienteId !== "none") ? data.clienteId : undefined,
       senha: data.senha || undefined,
     };
     if (editingAccount) {
@@ -422,7 +422,7 @@ export default function ContasPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">— Nenhum —</SelectItem>
+                            <SelectItem value="none">— Nenhum —</SelectItem>
                             {clients?.map((c) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.nome}
