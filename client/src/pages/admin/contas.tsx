@@ -63,8 +63,6 @@ const accountFormSchema = z.object({
   clienteId: z.string().optional(),
   status: z.enum(["ativo", "inativo"]),
   cameraIds: z.array(z.string()),
-}).refine((data) => {
-  return true;
 });
 
 type AccountFormValues = z.infer<typeof accountFormSchema>;
@@ -108,11 +106,13 @@ export default function ContasPage() {
       toast({ title: "Conta criada com sucesso!" });
       handleCloseDialog();
     },
-    onError: async (error: any) => {
+    onError: async (error: unknown) => {
       let msg = "Erro ao criar conta";
       try {
-        const body = await error.response?.json?.();
-        if (body?.message) msg = body.message;
+        if (error instanceof Error && "response" in error) {
+          const body = await (error as { response: { json: () => Promise<{ message?: string }> } }).response.json();
+          if (body?.message) msg = body.message;
+        }
       } catch {}
       toast({ title: msg, variant: "destructive" });
     },

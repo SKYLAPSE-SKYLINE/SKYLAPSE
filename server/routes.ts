@@ -14,6 +14,14 @@ import { testCameraConnection, fetchSnapshot } from "./camera-service";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+declare global {
+  namespace Express {
+    interface Request {
+      clientAccountId?: string;
+    }
+  }
+}
+
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 
 export const isClientAuthenticated: RequestHandler = (req, res, next) => {
@@ -23,7 +31,7 @@ export const isClientAuthenticated: RequestHandler = (req, res, next) => {
   }
   try {
     const payload = jwt.verify(token, CLIENT_JWT_SECRET) as { clientAccountId: string };
-    (req as any).clientAccountId = payload.clientAccountId;
+    req.clientAccountId = payload.clientAccountId;
     next();
   } catch {
     return res.status(401).json({ message: "Sessão expirada ou inválida" });
@@ -499,7 +507,8 @@ export async function registerRoutes(
         }
       }
 
-      const updateData: Record<string, any> = { ...rest };
+      type ClientAccountUpdate = Parameters<typeof storage.updateClientAccount>[1];
+      const updateData: ClientAccountUpdate = { ...rest };
       if (senha && senha.length >= 6) {
         updateData.senhaHash = await bcrypt.hash(senha, 10);
       }
@@ -581,7 +590,7 @@ export async function registerRoutes(
 
   app.get("/api/client/me", isClientAuthenticated, async (req, res) => {
     try {
-      const clientAccountId = (req as any).clientAccountId;
+      const clientAccountId = req.clientAccountId!;
       const account = await storage.getClientAccount(clientAccountId);
       if (!account) {
         res.clearCookie("skylapse-client-token");
