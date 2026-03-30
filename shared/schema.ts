@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, date, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, date, index, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -61,6 +61,24 @@ export const captures = pgTable("captures", {
   index("idx_camera_data").on(table.cameraId, table.capturadoEm),
 ]);
 
+// Client accounts table - login accounts for clients (created by admin)
+export const clientAccounts = pgTable("client_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "cascade" }),
+  nome: text("nome").notNull(),
+  email: text("email").notNull().unique(),
+  senhaHash: text("senha_hash").notNull(),
+  status: text("status").default("ativo").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Client camera access table - which cameras each client account can see
+export const clientCameraAccess = pgTable("client_camera_access", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientAccountId: varchar("client_account_id").notNull().references(() => clientAccounts.id, { onDelete: "cascade" }),
+  cameraId: varchar("camera_id").notNull().references(() => cameras.id, { onDelete: "cascade" }),
+});
+
 // Timelapses table - generated time-lapse videos
 export const timelapses = pgTable("timelapses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -85,6 +103,26 @@ export const timelapses = pgTable("timelapses", {
 // Relations
 export const clientsRelations = relations(clients, ({ many }) => ({
   locations: many(locations),
+  clientAccounts: many(clientAccounts),
+}));
+
+export const clientAccountsRelations = relations(clientAccounts, ({ one, many }) => ({
+  cliente: one(clients, {
+    fields: [clientAccounts.clienteId],
+    references: [clients.id],
+  }),
+  cameraAccess: many(clientCameraAccess),
+}));
+
+export const clientCameraAccessRelations = relations(clientCameraAccess, ({ one }) => ({
+  clientAccount: one(clientAccounts, {
+    fields: [clientCameraAccess.clientAccountId],
+    references: [clientAccounts.id],
+  }),
+  camera: one(cameras, {
+    fields: [clientCameraAccess.cameraId],
+    references: [cameras.id],
+  }),
 }));
 
 export const locationsRelations = relations(locations, ({ one, many }) => ({
@@ -153,6 +191,19 @@ export const insertTimelapseSchema = createInsertSchema(timelapses).omit({
   erroMensagem: true,
 });
 
+export const insertClientAccountSchema = createInsertSchema(clientAccounts).omit({
+  id: true,
+  createdAt: true,
+  senhaHash: true,
+}).extend({
+  senha: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  cameraIds: z.array(z.string()).optional(),
+});
+
+export const insertClientCameraAccessSchema = createInsertSchema(clientCameraAccess).omit({
+  id: true,
+});
+
 // Types
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type Client = typeof clients.$inferSelect;
@@ -168,6 +219,14 @@ export type Capture = typeof captures.$inferSelect;
 
 export type InsertTimelapse = z.infer<typeof insertTimelapseSchema>;
 export type Timelapse = typeof timelapses.$inferSelect;
+
+export type InsertClientAccount = z.infer<typeof insertClientAccountSchema>;
+export type ClientAccount = typeof clientAccounts.$inferSelect;
+export type ClientCameraAccess = typeof clientCameraAccess.$inferSelect;
+export type ClientAccountWithRelations = ClientAccount & {
+  cliente?: Client;
+  cameraAccess?: (ClientCameraAccess & { camera?: Camera })[];
+};
 
 // Extended types with relations
 export type LocationWithClient = Location & { cliente?: Client };

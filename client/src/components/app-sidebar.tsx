@@ -1,4 +1,4 @@
-import { Camera, LayoutDashboard, Users, MapPin, Video, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Camera, LayoutDashboard, Users, MapPin, Video, Settings, LogOut, ChevronDown, UserCog } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/use-auth";
 const adminMenuItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { title: "Clientes", url: "/admin/clientes", icon: Users },
+  { title: "Contas", url: "/admin/contas", icon: UserCog },
   { title: "Localidades", url: "/admin/localidades", icon: MapPin },
   { title: "Câmeras", url: "/admin/cameras", icon: Camera },
   { title: "Time-lapses", url: "/admin/timelapses", icon: Video },

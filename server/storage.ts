@@ -1,10 +1,12 @@
 import { 
   clients, locations, cameras, captures, timelapses,
+  clientAccounts, clientCameraAccess,
   type Client, type InsertClient,
   type Location, type InsertLocation,
   type Camera, type InsertCamera,
   type Capture, type InsertCapture,
   type Timelapse, type InsertTimelapse,
+  type ClientAccount, type ClientAccountWithRelations,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -46,6 +48,16 @@ export interface IStorage {
   createTimelapse(timelapse: InsertTimelapse): Promise<Timelapse>;
   updateTimelapse(id: string, timelapse: Partial<Timelapse>): Promise<Timelapse | undefined>;
   deleteTimelapse(id: string): Promise<boolean>;
+
+  // Client Accounts
+  getClientAccounts(): Promise<ClientAccountWithRelations[]>;
+  getClientAccount(id: string): Promise<ClientAccountWithRelations | undefined>;
+  getClientAccountByEmail(email: string): Promise<ClientAccount | undefined>;
+  createClientAccount(data: { clienteId?: string | null; nome: string; email: string; senhaHash: string; status?: string }): Promise<ClientAccount>;
+  updateClientAccount(id: string, data: Partial<{ clienteId: string | null; nome: string; email: string; senhaHash: string; status: string }>): Promise<ClientAccount | undefined>;
+  deleteClientAccount(id: string): Promise<boolean>;
+  setClientCameraAccess(clientAccountId: string, cameraIds: string[]): Promise<void>;
+  getClientCameraIds(clientAccountId: string): Promise<string[]>;
 
   // Stats
   getStats(): Promise<{
@@ -238,6 +250,75 @@ export class DatabaseStorage implements IStorage {
   async deleteTimelapse(id: string): Promise<boolean> {
     const result = await db.delete(timelapses).where(eq(timelapses.id, id)).returning();
     return result.length > 0;
+  }
+
+  // Client Accounts
+  async getClientAccounts(): Promise<ClientAccountWithRelations[]> {
+    const result = await db.query.clientAccounts.findMany({
+      with: {
+        cliente: true,
+        cameraAccess: {
+          with: { camera: true },
+        },
+      },
+      orderBy: desc(clientAccounts.createdAt),
+    });
+    return result;
+  }
+
+  async getClientAccount(id: string): Promise<ClientAccountWithRelations | undefined> {
+    const result = await db.query.clientAccounts.findFirst({
+      where: eq(clientAccounts.id, id),
+      with: {
+        cliente: true,
+        cameraAccess: {
+          with: { camera: true },
+        },
+      },
+    });
+    return result;
+  }
+
+  async getClientAccountByEmail(email: string): Promise<ClientAccount | undefined> {
+    const [account] = await db.select().from(clientAccounts).where(eq(clientAccounts.email, email));
+    return account;
+  }
+
+  async createClientAccount(data: { clienteId?: string | null; nome: string; email: string; senhaHash: string; status?: string }): Promise<ClientAccount> {
+    const [account] = await db.insert(clientAccounts).values({
+      clienteId: data.clienteId,
+      nome: data.nome,
+      email: data.email,
+      senhaHash: data.senhaHash,
+      status: data.status || "ativo",
+    }).returning();
+    return account;
+  }
+
+  async updateClientAccount(id: string, data: Partial<{ clienteId: string | null; nome: string; email: string; senhaHash: string; status: string }>): Promise<ClientAccount | undefined> {
+    const [updated] = await db.update(clientAccounts).set(data).where(eq(clientAccounts.id, id)).returning();
+    return updated;
+  }
+
+  async deleteClientAccount(id: string): Promise<boolean> {
+    const result = await db.delete(clientAccounts).where(eq(clientAccounts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async setClientCameraAccess(clientAccountId: string, cameraIds: string[]): Promise<void> {
+    await db.delete(clientCameraAccess).where(eq(clientCameraAccess.clientAccountId, clientAccountId));
+    if (cameraIds.length > 0) {
+      await db.insert(clientCameraAccess).values(
+        cameraIds.map((cameraId) => ({ clientAccountId, cameraId }))
+      );
+    }
+  }
+
+  async getClientCameraIds(clientAccountId: string): Promise<string[]> {
+    const result = await db.select({ cameraId: clientCameraAccess.cameraId })
+      .from(clientCameraAccess)
+      .where(eq(clientCameraAccess.clientAccountId, clientAccountId));
+    return result.map((r) => r.cameraId);
   }
 
   // Stats

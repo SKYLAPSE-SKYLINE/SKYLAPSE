@@ -6,10 +6,12 @@ import {
   insertClientSchema, 
   insertLocationSchema, 
   insertCameraSchema,
-  insertTimelapseSchema
+  insertTimelapseSchema,
+  insertClientAccountSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import { testCameraConnection, fetchSnapshot } from "./camera-service";
+import bcrypt from "bcryptjs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -406,6 +408,149 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting timelapse:", error);
       res.status(500).json({ message: "Failed to delete timelapse" });
+    }
+  });
+
+  // Client Accounts (admin management)
+  app.get("/api/admin/client-accounts", isAuthenticated, async (req, res) => {
+    try {
+      const accounts = await storage.getClientAccounts();
+      const safeAccounts = accounts.map(({ senhaHash, ...rest }) => rest);
+      res.json(safeAccounts);
+    } catch (error) {
+      console.error("Error fetching client accounts:", error);
+      res.status(500).json({ message: "Failed to fetch client accounts" });
+    }
+  });
+
+  app.get("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const account = await storage.getClientAccount(req.params.id);
+      if (!account) return res.status(404).json({ message: "Account not found" });
+      const { senhaHash, ...safe } = account;
+      res.json(safe);
+    } catch (error) {
+      console.error("Error fetching client account:", error);
+      res.status(500).json({ message: "Failed to fetch client account" });
+    }
+  });
+
+  app.post("/api/admin/client-accounts", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertClientAccountSchema.parse(req.body);
+      const existing = await storage.getClientAccountByEmail(data.email);
+      if (existing) {
+        return res.status(409).json({ message: "Já existe uma conta com este e-mail" });
+      }
+      const senhaHash = await bcrypt.hash(data.senha, 10);
+      const account = await storage.createClientAccount({
+        clienteId: data.clienteId || null,
+        nome: data.nome,
+        email: data.email,
+        senhaHash,
+        status: data.status || "ativo",
+      });
+      if (data.cameraIds && data.cameraIds.length > 0) {
+        await storage.setClientCameraAccess(account.id, data.cameraIds);
+      }
+      const full = await storage.getClientAccount(account.id);
+      const { senhaHash: _, ...safe } = full!;
+      res.status(201).json(safe);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating client account:", error);
+      res.status(500).json({ message: "Failed to create client account" });
+    }
+  });
+
+  app.put("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { senha, cameraIds, ...rest } = req.body;
+      const updateData: Record<string, any> = { ...rest };
+      if (senha && senha.length >= 6) {
+        updateData.senhaHash = await bcrypt.hash(senha, 10);
+      }
+      const account = await storage.updateClientAccount(req.params.id, updateData);
+      if (!account) return res.status(404).json({ message: "Account not found" });
+      if (Array.isArray(cameraIds)) {
+        await storage.setClientCameraAccess(account.id, cameraIds);
+      }
+      const full = await storage.getClientAccount(account.id);
+      const { senhaHash: _, ...safe } = full!;
+      res.json(safe);
+    } catch (error) {
+      console.error("Error updating client account:", error);
+      res.status(500).json({ message: "Failed to update client account" });
+    }
+  });
+
+  app.delete("/api/admin/client-accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await storage.deleteClientAccount(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Account not found" });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting client account:", error);
+      res.status(500).json({ message: "Failed to delete client account" });
+    }
+  });
+
+  // Client login (separate from admin Replit Auth)
+  app.post("/api/client/login", async (req, res) => {
+    try {
+      const { email, senha } = req.body;
+      if (!email || !senha) {
+        return res.status(400).json({ message: "E-mail e senha são obrigatórios" });
+      }
+      const account = await storage.getClientAccountByEmail(email);
+      if (!account) {
+        return res.status(401).json({ message: "E-mail ou senha incorretos" });
+      }
+      if (account.status !== "ativo") {
+        return res.status(403).json({ message: "Conta desativada. Entre em contato com o suporte." });
+      }
+      const valid = await bcrypt.compare(senha, account.senhaHash);
+      if (!valid) {
+        return res.status(401).json({ message: "E-mail ou senha incorretos" });
+      }
+      const cameraIds = await storage.getClientCameraIds(account.id);
+      (req.session as any).clientAccountId = account.id;
+      res.json({ 
+        id: account.id, 
+        nome: account.nome, 
+        email: account.email,
+        clienteId: account.clienteId,
+        cameraIds,
+      });
+    } catch (error) {
+      console.error("Error client login:", error);
+      res.status(500).json({ message: "Erro ao fazer login" });
+    }
+  });
+
+  app.post("/api/client/logout", (req, res) => {
+    (req.session as any).clientAccountId = undefined;
+    res.json({ message: "Logout realizado" });
+  });
+
+  app.get("/api/client/me", async (req, res) => {
+    try {
+      const clientAccountId = (req.session as any).clientAccountId;
+      if (!clientAccountId) {
+        return res.status(401).json({ message: "Não autenticado" });
+      }
+      const account = await storage.getClientAccount(clientAccountId);
+      if (!account) {
+        return res.status(401).json({ message: "Conta não encontrada" });
+      }
+      const cameraIds = await storage.getClientCameraIds(account.id);
+      const { senhaHash, ...safe } = account;
+      res.json({ ...safe, cameraIds });
+    } catch (error) {
+      console.error("Error fetching client me:", error);
+      res.status(500).json({ message: "Erro ao buscar dados" });
     }
   });
 

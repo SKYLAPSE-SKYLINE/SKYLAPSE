@@ -16,6 +16,7 @@ import CamerasPage from "@/pages/admin/cameras";
 import CameraLivePage from "@/pages/admin/camera-live";
 import CameraGalleryPage from "@/pages/admin/camera-gallery";
 import TimelapsesPage from "@/pages/admin/timelapses";
+import ContasPage from "@/pages/admin/contas";
 
 function AuthenticatedRoutes() {
   return (
@@ -27,6 +28,7 @@ function AuthenticatedRoutes() {
       <Route path="/admin/cameras/:id/live" component={CameraLivePage} />
       <Route path="/admin/cameras/:id/galeria" component={CameraGalleryPage} />
       <Route path="/admin/timelapses" component={TimelapsesPage} />
+      <Route path="/admin/contas" component={ContasPage} />
       <Route path="/">
         <AdminDashboard />
       </Route>
