@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, StatusDot } from "@/components/status-badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, Maximize2, RefreshCw, Camera, Image, AlertCircle } from "lucide-react";
+import { ArrowLeft, RefreshCw, Camera, Image, AlertCircle, Wifi, Monitor } from "lucide-react";
 import type { Camera as CameraType, Capture } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+type ViewMode = "snapshot" | "stream";
 
 export default function CameraLivePage() {
   const params = useParams();
@@ -18,58 +19,57 @@ export default function CameraLivePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("snapshot");
 
   const { data: camera, isLoading: cameraLoading } = useQuery<CameraType>({
     queryKey: ["/api/admin/cameras", cameraId],
   });
 
-  const { data: lastCapture, refetch } = useQuery<Capture>({
+  const { data: lastCapture } = useQuery<Capture>({
     queryKey: ["/api/admin/cameras", cameraId, "last-capture"],
     refetchInterval: 30000,
   });
 
   const snapshotUrl = `/api/admin/cameras/${cameraId}/snapshot?t=${refreshKey}`;
+  const streamUrl = (camera as any)?.streamUrl as string | null | undefined;
+  const liveStreamUrl = streamUrl
+    ? `${streamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
+    : null;
 
   useEffect(() => {
+    if (viewMode !== "snapshot") return;
     const interval = setInterval(() => {
       setRefreshKey((k) => k + 1);
       setImageError(false);
       setImageLoading(true);
     }, 30000);
-
     return () => clearInterval(interval);
-  }, []);
+  }, [viewMode]);
 
   if (cameraLoading) {
     return (
-      <AdminLayout
-        breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Câmeras", href: "/admin/cameras" },
-          { label: "Ao Vivo" },
-        ]}
-      >
+      <AdminLayout breadcrumbs={[
+        { label: "Admin", href: "/admin/dashboard" },
+        { label: "Câmeras", href: "/admin/cameras" },
+        { label: "Ao Vivo" },
+      ]}>
         <Skeleton className="h-96 w-full" />
       </AdminLayout>
     );
   }
 
   return (
-    <AdminLayout
-      breadcrumbs={[
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Câmeras", href: "/admin/cameras" },
-        { label: camera?.nome || "Câmera", href: `/admin/cameras/${cameraId}` },
-        { label: "Ao Vivo" },
-      ]}
-    >
+    <AdminLayout breadcrumbs={[
+      { label: "Admin", href: "/admin/dashboard" },
+      { label: "Câmeras", href: "/admin/cameras" },
+      { label: camera?.nome || "Câmera", href: `/admin/cameras/${cameraId}` },
+      { label: "Ao Vivo" },
+    ]}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="outline" size="icon" asChild>
-              <Link href="/admin/cameras">
-                <ArrowLeft className="h-4 w-4" />
-              </Link>
+              <Link href="/admin/cameras"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
             <div>
               <div className="flex items-center gap-2">
@@ -77,11 +77,37 @@ export default function CameraLivePage() {
                 <StatusDot status={(camera?.status as "online" | "offline") || "offline"} />
               </div>
               <p className="text-sm text-muted-foreground">
-                Visualização ao vivo - Atualiza a cada 5 segundos
+                {viewMode === "stream" && liveStreamUrl
+                  ? "Stream ao vivo via go2rtc"
+                  : "Snapshot — atualiza a cada 30 segundos"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {streamUrl && (
+              <div className="flex items-center rounded-md border overflow-hidden">
+                <Button
+                  variant={viewMode === "snapshot" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="rounded-none border-none"
+                  onClick={() => setViewMode("snapshot")}
+                  data-testid="button-mode-snapshot"
+                >
+                  <Camera className="h-4 w-4 mr-1" />
+                  Snapshot
+                </Button>
+                <Button
+                  variant={viewMode === "stream" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="rounded-none border-none"
+                  onClick={() => setViewMode("stream")}
+                  data-testid="button-mode-stream"
+                >
+                  <Monitor className="h-4 w-4 mr-1" />
+                  Ao Vivo
+                </Button>
+              </div>
+            )}
             <Button variant="outline" asChild>
               <Link href={`/admin/cameras/${cameraId}/galeria`}>
                 <Image className="mr-2 h-4 w-4" />
@@ -94,10 +120,11 @@ export default function CameraLivePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
             <CardTitle className="flex items-center gap-2">
-              <Camera className="h-5 w-5" />
-              Snapshot Atual
+              {viewMode === "stream" && liveStreamUrl
+                ? <><Wifi className="h-5 w-5" /> Stream Ao Vivo</>
+                : <><Camera className="h-5 w-5" /> Snapshot Atual</>}
             </CardTitle>
-            <div className="flex items-center gap-2">
+            {viewMode === "snapshot" && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -110,59 +137,65 @@ export default function CameraLivePage() {
               >
                 <RefreshCw className="h-4 w-4" />
               </Button>
-            </div>
+            )}
           </CardHeader>
           <CardContent>
             <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
-              {imageLoading && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted">
-                  <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {imageError ? (
-                <div className="flex h-full flex-col items-center justify-center">
-                  <AlertCircle className="h-16 w-16 text-destructive/50" />
-                  <p className="mt-4 text-muted-foreground">Erro ao conectar com a câmera</p>
-                  <p className="text-xs text-muted-foreground mt-2">Verifique se o hostname e porta estão corretos</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-4"
-                    onClick={() => {
-                      setRefreshKey((k) => k + 1);
-                      setImageError(false);
-                      setImageLoading(true);
-                    }}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Tentar Novamente
-                  </Button>
-                </div>
+              {viewMode === "stream" && liveStreamUrl ? (
+                <iframe
+                  src={liveStreamUrl}
+                  className="h-full w-full border-0"
+                  allow="autoplay"
+                  title={`Stream ao vivo — ${camera?.nome}`}
+                  data-testid="iframe-live-stream"
+                />
               ) : (
                 <>
-                  <img
-                    key={refreshKey}
-                    src={snapshotUrl}
-                    alt={`Snapshot ao vivo de ${camera?.nome}`}
-                    className="h-full w-full object-contain"
-                    onLoad={() => setImageLoading(false)}
-                    onError={() => {
-                      setImageLoading(false);
-                      setImageError(true);
-                    }}
-                  />
-                  {!imageLoading && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                      <div className="flex items-center justify-between text-white">
-                        <div className="flex items-center gap-2">
-                          <StatusDot status="online" />
-                          <span className="text-sm font-medium">{camera?.nome}</span>
-                        </div>
-                        <span className="text-xs opacity-80">
-                          Ao vivo - Atualiza a cada 5s
-                        </span>
-                      </div>
+                  {imageLoading && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted">
+                      <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
+                  )}
+                  {imageError ? (
+                    <div className="flex h-full flex-col items-center justify-center">
+                      <AlertCircle className="h-16 w-16 text-destructive/50" />
+                      <p className="mt-4 text-muted-foreground">Erro ao conectar com a câmera</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => {
+                          setRefreshKey((k) => k + 1);
+                          setImageError(false);
+                          setImageLoading(true);
+                        }}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Tentar Novamente
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <img
+                        key={refreshKey}
+                        src={snapshotUrl}
+                        alt={`Snapshot ao vivo de ${camera?.nome}`}
+                        className="h-full w-full object-contain"
+                        onLoad={() => setImageLoading(false)}
+                        onError={() => { setImageLoading(false); setImageError(true); }}
+                      />
+                      {!imageLoading && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                          <div className="flex items-center justify-between text-white">
+                            <div className="flex items-center gap-2">
+                              <StatusDot status="online" />
+                              <span className="text-sm font-medium">{camera?.nome}</span>
+                            </div>
+                            <span className="text-xs opacity-80">Atualiza a cada 30s</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -190,14 +223,21 @@ export default function CameraLivePage() {
               <p className="text-sm text-muted-foreground">Última Captura</p>
               <p className="mt-1 font-medium">
                 {camera?.ultimaCaptura
-                  ? formatDistanceToNow(new Date(camera.ultimaCaptura), {
-                      addSuffix: true,
-                      locale: ptBR,
-                    })
+                  ? formatDistanceToNow(new Date(camera.ultimaCaptura), { addSuffix: true, locale: ptBR })
                   : "Sem capturas"}
               </p>
             </CardContent>
           </Card>
+          {streamUrl && (
+            <Card className="sm:col-span-3">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Wifi className="h-4 w-4" /> URL do Stream (go2rtc)
+                </p>
+                <p className="mt-1 font-mono text-sm break-all">{streamUrl}</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </AdminLayout>

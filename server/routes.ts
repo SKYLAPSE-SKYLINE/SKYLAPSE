@@ -10,7 +10,7 @@ import {
   insertAdminAccountSchema,
 } from "@shared/schema";
 import { z } from "zod";
-import { testCameraConnection, fetchSnapshot } from "./camera-service";
+import { testCameraConnection, fetchSnapshot, testGo2rtcConnection } from "./camera-service";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -289,13 +289,16 @@ export async function registerRoutes(
 
   app.post("/api/admin/cameras/test", isAdminAuthenticated, async (req, res) => {
     try {
-      const { hostname, portaHttp, usuario, senha, marca } = req.body;
-      
+      const { hostname, portaHttp, usuario, senha, marca, streamUrl } = req.body;
+
+      // go2rtc mode: test via /api/streams
+      if (streamUrl) {
+        const result = await testGo2rtcConnection(streamUrl);
+        return res.json(result);
+      }
+
       if (!hostname || !portaHttp || !usuario || !senha) {
-        return res.json({
-          sucesso: false,
-          mensagem: "Dados de conexão incompletos",
-        });
+        return res.json({ sucesso: false, mensagem: "Dados de conexão incompletos" });
       }
 
       const result = await testCameraConnection({
@@ -315,16 +318,10 @@ export async function registerRoutes(
         });
       }
 
-      res.json({
-        sucesso: result.sucesso,
-        mensagem: result.mensagem,
-      });
+      res.json({ sucesso: result.sucesso, mensagem: result.mensagem });
     } catch (error) {
       console.error("Error testing camera:", error);
-      res.json({
-        sucesso: false,
-        mensagem: "Erro ao testar conexão",
-      });
+      res.json({ sucesso: false, mensagem: "Erro ao testar conexão" });
     }
   });
 
@@ -336,6 +333,7 @@ export async function registerRoutes(
       }
 
       const result = await fetchSnapshot({
+        streamUrl: camera.streamUrl,
         hostname: camera.hostname,
         portaHttp: camera.portaHttp,
         usuario: camera.usuario,
@@ -763,6 +761,7 @@ export async function registerRoutes(
       status: camera.status,
       ultimaCaptura: camera.ultimaCaptura,
       intervaloCaptura: camera.intervaloCaptura,
+      streamUrl: camera.streamUrl ?? null,
       localidade: localidade ? { nome: localidade.nome, cidade: localidade.cidade, estado: localidade.estado } : null,
     };
   }
@@ -810,6 +809,7 @@ export async function registerRoutes(
       const camera = await storage.getCamera(req.params.id);
       if (!camera) return res.status(404).json({ message: "Câmera não encontrada" });
       const result = await fetchSnapshot({
+        streamUrl: camera.streamUrl,
         hostname: camera.hostname,
         portaHttp: camera.portaHttp,
         usuario: camera.usuario,

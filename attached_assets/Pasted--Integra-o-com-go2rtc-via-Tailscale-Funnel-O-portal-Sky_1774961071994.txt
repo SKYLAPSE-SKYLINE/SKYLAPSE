@@ -1,0 +1,57 @@
+ ---
+  Integração com go2rtc via Tailscale Funnel
+
+  O portal SkyLapse precisa ser adaptado para funcionar com câmeras acessadas remotamente via Raspberry Pi + go2rtc + Tailscale Funnel. Cada câmera tem um SBC (Raspberry Pi ou
+  Orange Pi) no local que roda o go2rtc e expõe uma URL pública HTTPS via Tailscale Funnel.
+
+  Mudanças necessárias:
+
+  1. Adicionar campo streamUrl na tabela cameras (schema.ts)
+  - Novo campo: streamUrl (text, opcional) — URL pública do go2rtc (ex: https://skyline-timelapse.taild2c22c.ts.net)
+  - Esse campo substitui a lógica de montar URL a partir de hostname+porta quando preenchido
+
+  2. Atualizar camera-service.ts para buscar snapshots via go2rtc
+  - Quando streamUrl estiver preenchido, buscar snapshot pela API do go2rtc:
+    - GET {streamUrl}/api/frame.jpeg?src=camera1
+  - Quando streamUrl estiver vazio, manter a lógica atual (acesso direto à câmera por hostname/porta)
+
+  3. Adicionar streaming ao vivo no frontend
+  - Na página de live view (admin e cliente), quando a câmera tiver streamUrl:
+    - Exibir o stream ao vivo embutido via iframe: {streamUrl}/stream.html?src=camera1&mode=mse
+    - Adicionar botão de toggle entre "Snapshot" e "Ao Vivo"
+    - O modo MSE é o recomendado (menor consumo de banda)
+  - Quando não tiver streamUrl, manter o comportamento atual (só snapshot)
+
+  4. Atualizar formulário de cadastro de câmera (admin)
+  - Adicionar campo "URL do Stream (go2rtc)" no formulário de criar/editar câmera
+  - Placeholder: https://nome-do-dispositivo.taild2c22c.ts.net
+  - Campo opcional — se vazio, funciona no modo antigo (acesso direto)
+  - Adicionar botão "Testar Stream" que faz fetch na URL {streamUrl}/api/streams e verifica se retorna 200
+
+  5. Atualizar API de teste de conexão (POST /api/admin/cameras/test)
+  - Se streamUrl estiver preenchido, testar conexão via {streamUrl}/api/streams ao invés de tentar acessar a câmera diretamente
+  - Retornar sucesso se o go2rtc responder com a lista de streams
+
+  6. Atualizar o DTO do cliente
+  - O endpoint GET /api/client/cameras já esconde credenciais. Incluir streamUrl no DTO do cliente para o frontend conseguir montar o iframe
+
+  7. Captura automática de snapshots
+  - O job de captura automática (intervaloCaptura) deve usar {streamUrl}/api/frame.jpeg?src=camera1 quando streamUrl estiver preenchido
+  - Salvar o JPEG normalmente no sistema de captures existente
+
+  Resumo da arquitetura:
+
+  [Câmera RTSP] → [Raspberry Pi (go2rtc + Tailscale)] → [URL pública HTTPS]
+                                                                ↓
+                                              [Portal SkyLapse acessa via streamUrl]
+                                                      ├── Snapshots (JPEG)
+                                                      ├── Stream ao vivo (MSE/iframe)
+                                                      └── Galeria + Timelapse
+
+  Exemplo de configuração de câmera:
+
+  - Nome: Camera Obra 1
+  - Stream URL: https://skyline-timelapse.taild2c22c.ts.net
+  - Marca: reolink
+  - Intervalo de captura: 10 minutos
+  - (hostname, porta, usuario, senha ficam opcionais quando streamUrl é usado)

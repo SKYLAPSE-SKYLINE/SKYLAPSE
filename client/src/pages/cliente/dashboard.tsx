@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Camera, LogOut, MapPin, Clock, Wifi, WifiOff, Eye } from "lucide-react";
+import { Camera, LogOut, MapPin, Clock, Wifi, WifiOff, Eye, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ type ClientCamera = {
   status: string;
   ultimaCaptura: string | null;
   intervaloCaptura: number;
+  streamUrl: string | null;
   localidade: { nome: string; cidade?: string | null; estado?: string | null } | null;
 };
 
@@ -50,36 +51,65 @@ function CameraCardSkeleton() {
 }
 
 function SnapshotDialog({ camera, open, onClose }: { camera: ClientCamera | null; open: boolean; onClose: () => void }) {
+  const [mode, setMode] = useState<"snapshot" | "stream">("snapshot");
   const snapshotUrl = camera ? `/api/client/cameras/${camera.id}/snapshot?t=${Date.now()}` : "";
+  const liveStreamUrl = camera?.streamUrl
+    ? `${camera.streamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
+    : null;
   if (!camera) return null;
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl p-0">
         <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Camera className="h-4 w-4" />
-            {camera.nome} — Imagem ao Vivo
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              {camera.nome}
+            </span>
+            {liveStreamUrl && (
+              <div className="flex items-center rounded-md border overflow-hidden text-sm font-normal">
+                <button
+                  className={`px-3 py-1.5 flex items-center gap-1 transition-colors ${mode === "snapshot" ? "bg-muted font-medium" : "hover:bg-muted/50"}`}
+                  onClick={() => setMode("snapshot")}
+                >
+                  <Camera className="h-3.5 w-3.5" /> Snapshot
+                </button>
+                <button
+                  className={`px-3 py-1.5 flex items-center gap-1 transition-colors ${mode === "stream" ? "bg-muted font-medium" : "hover:bg-muted/50"}`}
+                  onClick={() => setMode("stream")}
+                >
+                  <Monitor className="h-3.5 w-3.5" /> Ao Vivo
+                </button>
+              </div>
+            )}
           </DialogTitle>
         </DialogHeader>
         <div className="relative bg-black">
-          <img
-            src={snapshotUrl}
-            alt={`Snapshot ao vivo de ${camera.nome}`}
-            className="w-full object-contain max-h-[70vh]"
-            data-testid="img-live-snapshot"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          {mode === "stream" && liveStreamUrl ? (
+            <iframe
+              src={liveStreamUrl}
+              className="w-full border-0"
+              style={{ height: "60vh" }}
+              allow="autoplay"
+              title={`Stream ao vivo — ${camera.nome}`}
+              data-testid="iframe-client-live-stream"
+            />
+          ) : (
+            <img
+              src={snapshotUrl}
+              alt={`Snapshot ao vivo de ${camera.nome}`}
+              className="w-full object-contain max-h-[70vh]"
+              data-testid="img-live-snapshot"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          )}
         </div>
         <div className="px-6 py-3 flex items-center justify-between text-sm text-muted-foreground border-t">
           <span>{camera.localidade?.nome || "—"}</span>
           <Badge variant={camera.status === "online" ? "default" : "secondary"}>
-            {camera.status === "online" ? (
-              <><Wifi className="h-3 w-3 mr-1" />Online</>
-            ) : (
-              <><WifiOff className="h-3 w-3 mr-1" />Offline</>
-            )}
+            {camera.status === "online"
+              ? <><Wifi className="h-3 w-3 mr-1" />Online</>
+              : <><WifiOff className="h-3 w-3 mr-1" />Offline</>}
           </Badge>
         </div>
       </DialogContent>
