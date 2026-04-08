@@ -1,3 +1,75 @@
+# Security Assessment Report
+
+## Executive Summary
+
+**Target:** http://host.docker.internal:3000
+
+**Assessment Date:** 2026-04-08
+
+**Scope:** Authentication, XSS, SQL and Command Injection, SSRF, Authorization testing
+
+### Summary by Vulnerability Type
+
+**Authentication Vulnerabilities:**
+Six authentication vulnerabilities were discovered across token management and password reset functionality. These include JWT token replay after logout (AUTH-VULN-01), missing rate limiting on the change-password endpoint (AUTH-VULN-02), rate limit bypass via successful login (AUTH-VULN-03), account enumeration via HTTP status codes (AUTH-VULN-04), missing Secure flag on session cookies (AUTH-VULN-05), and missing HSTS header (AUTH-VULN-06). All six vulnerabilities were confirmed exploited.
+
+**Authorization Vulnerabilities:**
+Eight authorization vulnerabilities were discovered, all confirmed exploited. This includes two critical-severity horizontal escalations allowing any admin to take over or delete any other admin account (AUTHZ-VULN-03, AUTHZ-VULN-04). Additionally, six vertical privilege escalation vulnerabilities enable clients to perform admin-only operations: creating additional admin accounts (AUTHZ-VULN-08), bypassing camera test endpoint blocklists (AUTHZ-VULN-05), creating cameras with SSRF payloads (AUTHZ-VULN-06), updating cameras with SSRF payloads (AUTHZ-VULN-07), and two horizontal IDOR vulnerabilities allowing unauthorized access to any camera's captured images and timelapse videos (AUTHZ-VULN-01, AUTHZ-VULN-02).
+
+**Cross-Site Scripting (XSS) Vulnerabilities:**
+Three stored XSS vulnerabilities were discovered in camera stream URL handling. XSS-VULN-01 affects the admin settings page, XSS-VULN-02 affects the admin camera live streaming view, and XSS-VULN-03 demonstrates the privilege escalation chain to attack client dashboard access. All three vulnerabilities were confirmed exploited.
+
+**SQL/Command Injection Vulnerabilities:**
+Two injection vulnerabilities were discovered and confirmed exploited, both involving Server-Side Request Forgery (SSRF). INJ-VULN-01 is a stored SSRF via camera hostname/streamUrl fields with no blocklist protection. INJ-VULN-02 is an interactive SSRF via the camera test endpoint with an insufficient 3-entry blocklist that does not protect against RFC1918 or loopback addresses. Both were confirmed exploited with critical severity.
+
+**Server-Side Request Forgery (SSRF) Vulnerabilities:**
+Four SSRF vulnerabilities were discovered and confirmed exploited. SSRF-VULN-01 is the camera test endpoint insufficient blocklist bypass. SSRF-VULN-02, SSRF-VULN-03, and SSRF-VULN-04 are stored SSRF payloads triggerable via admin snapshot endpoint, client snapshot endpoint, and automated capture job respectively. All enable non-blind SSRF with complete response exfiltration.
+
+---
+
+## Network Reconnaissance
+
+### Open Ports & Exposed Services
+
+**Port 3000 (HTTP):** Express.js application server hosting both React SPA frontend and REST API from a single process. Primary attack surface for all vulnerability discovery.
+
+**Port 5432 (PostgreSQL 16):** Database service confirmed running but not network-accessible (internal only).
+
+### Security Headers Present
+
+The application implements several positive security controls in response headers:
+
+- `X-Content-Type-Options: nosniff` — Prevents MIME-type sniffing attacks
+- `X-Frame-Options: DENY` — Prevents clickjacking via iframe embedding
+- `X-XSS-Protection: 1; mode=block` — Browser XSS filter enabled
+- `Referrer-Policy: strict-origin-when-cross-origin` — Limits referrer disclosure
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()` — Restricts browser API access
+- `Content-Security-Policy` configured with `default-src 'self'` and limited inline script allowance
+
+**Note:** CSP includes `'unsafe-inline'` and `'unsafe-eval'` for scripts, which weakens XSS protection but was not directly exploited in this assessment.
+
+### Identified Attack Surface
+
+**Subdomains & External Instances:** None. The target is a single-origin monolithic application. An ngrok tunnel (`https://piratic-cory-internally.ngrok-free.dev`) is configured for external access but DNS resolution was not tested during this assessment.
+
+**API Endpoints:** 61 network-accessible endpoints:
+- 6 public (unauthenticated) endpoints
+- 48 admin-authenticated endpoints
+- 7 client-authenticated endpoints
+- 2 static file middleware paths (`/api/captures/**`, `/api/videos/**`)
+
+**Notable Infrastructure:** Application deployed on Replit Autoscale (no reverse proxy or nginx layer). TLS termination by Replit proxy. FFmpeg/ffprobe system binaries present for media processing. PostgreSQL 16 backend.
+
+### Dead Code & Dependency Risks
+
+Identified unused dependencies with potential security impact:
+- `passport`, `passport-local`, `openid-client` — OAuth/OIDC libraries installed but never initialized in production code path
+- `connect-pg-simple`, `express-session`, `memorystore` — Session management libraries present but not used (JWT-based authentication is used instead)
+
+These dependencies increase supply-chain risk and require dependency management updates.
+
+---
+
 # Injection Exploitation Evidence
 
 ## Successfully Exploited Vulnerabilities
