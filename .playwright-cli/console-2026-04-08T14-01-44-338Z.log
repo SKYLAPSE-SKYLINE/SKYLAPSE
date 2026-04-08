@@ -22,3 +22,9 @@
     at QueryClientProvider (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/@tanstack_react-query.js?v=595b4069:2747:3)
     at App @ http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/chunk-LPF6KSF2.js?v=595b4069:520
 [   30247ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[   60255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[   90272ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[  120295ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[  150312ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[  180340ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/e9651907-b6f4-4c0b-b0f8-c43c394b069c/last-capture:0
+[  180371ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://host.docker.internal:3000/api/client/cameras:0

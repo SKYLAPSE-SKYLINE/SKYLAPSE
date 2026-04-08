@@ -1,0 +1,52 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - link "SkyLapse" [ref=e6] [cursor=pointer]:
+          - /url: /cliente/dashboard
+          - generic [ref=e7]: SkyLapse
+        - generic [ref=e8]:
+          - generic [ref=e9]: Gustavo
+          - button "Sair" [ref=e10] [cursor=pointer]:
+            - img [ref=e11]
+    - main [ref=e14]:
+      - generic [ref=e16]:
+        - heading "Cameras" [level=1] [ref=e17]
+        - paragraph [ref=e18]: 2 cameras
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - img [ref=e23]
+            - generic [ref=e28]:
+              - button "Ao Vivo" [ref=e29] [cursor=pointer]:
+                - img [ref=e30]
+                - text: Ao Vivo
+              - button "Galeria" [ref=e33] [cursor=pointer]:
+                - img [ref=e34]
+                - text: Galeria
+          - generic [ref=e39]:
+            - heading "XSS-Test-Camera" [level=3] [ref=e41]
+            - generic [ref=e42]:
+              - paragraph [ref=e43]: Ultima captura
+              - paragraph [ref=e44]: —
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - img "Camera Principal" [ref=e47]
+            - generic [ref=e54]:
+              - button "Ao Vivo" [ref=e55] [cursor=pointer]:
+                - img [ref=e56]
+                - text: Ao Vivo
+              - button "Galeria" [ref=e59] [cursor=pointer]:
+                - img [ref=e60]
+                - text: Galeria
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - heading "Camera Principal" [level=3] [ref=e67]
+              - generic [ref=e69]:
+                - img [ref=e70]
+                - text: Obra Principal
+            - generic [ref=e73]:
+              - paragraph [ref=e74]: Ultima captura
+              - paragraph [ref=e75]: há cerca de 20 horas

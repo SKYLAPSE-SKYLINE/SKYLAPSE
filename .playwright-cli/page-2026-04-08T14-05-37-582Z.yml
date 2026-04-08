@@ -1,0 +1,65 @@
+- generic:
+  - generic:
+    - list
+    - generic:
+      - banner:
+        - generic:
+          - link:
+            - /url: /cliente/dashboard
+            - generic: SkyLapse
+          - generic:
+            - generic: Gustavo
+            - button:
+              - img
+      - main:
+        - generic:
+          - generic:
+            - heading [level=1]: Cameras
+            - paragraph: 2 cameras
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - generic:
+                - button:
+                  - img
+                  - text: Ao Vivo
+                - button:
+                  - img
+                  - text: Galeria
+            - generic:
+              - generic:
+                - heading [level=3]: XSS-Test-Camera
+              - generic:
+                - paragraph: Ultima captura
+                - paragraph: —
+          - generic:
+            - generic:
+              - img
+              - generic:
+                - button:
+                  - img
+                  - text: Ao Vivo
+                - button:
+                  - img
+                  - text: Galeria
+            - generic:
+              - generic:
+                - heading [level=3]: Camera Principal
+                - generic:
+                  - generic:
+                    - img
+                    - text: Obra Principal
+              - generic:
+                - paragraph: Ultima captura
+                - paragraph: há cerca de 20 horas
+  - dialog [ref=e77]:
+    - generic [ref=e78]:
+      - generic [ref=e81]: XSS-Test-Camera
+      - generic [ref=e82]:
+        - button "Snapshot" [active] [ref=e83] [cursor=pointer]
+        - button "Ao Vivo" [ref=e84] [cursor=pointer]
+    - button "Close" [ref=e85] [cursor=pointer]:
+      - img [ref=e86]
+      - generic [ref=e89]: Close
