@@ -1,0 +1,31 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K11:28:43 PM [express] serving on port 5000
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+11:28:47 PM [express] GET /api/admin/me 304 in 7ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:06:46 AM [express] POST /api/admin/login 200 in 357ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:06:47 AM [express] GET /api/admin/me 304 in 3ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:06:47 AM [express] GET /api/admin/stats 304 in 5ms :: {"totalClients":2,"activeClients":2,"totalCameras":1,"onlineCameras":1,"offlineCameras":0,"todayCaptures":0,"processingTimelapses":0}
+12:06:47 AM [express] GET /api/admin/cameras/offline 304 in 2ms :: []
+12:06:47 AM [express] GET /api/admin/timelapses/recent 304 in 3ms :: []
+12:06:51 AM [express] GET /api/admin/clients 304 in 2ms :: [{"id":"7b31c67e-3624-4514-88bf-0fcfe1a75284","nome":"Ranyere Dias","email":"gabriel@skylineip.com.br","telefone":"62992294131","empresa":"Skyline Imagens e Produções Ltda","userId":null,"status":"ativo","createdAt":"2026-01-27T12:39:02.426Z"},{"id":"d78f12b9-88ce-4161-a6b8-5394a494c9d9","nome":"Empresa Teste 6G5r","email":"empresa6G5r@teste.com","telefone":"(11) 99999-9999","empresa":"Empresa Teste LTDA","userId":null,"status":"ativo","createdAt":"2026-01-27T00:22:54.820Z"}]
+12:06:51 AM [express] GET /api/admin/client-accounts 200 in 6ms :: [{"id":"e4f2921c-a474-46c7-a03b-12987340b6f9","nome":"Cliente Teste Portal","email":"portal-test@example.com","clienteId":null,"status":"ativo","createdAt":"2026-03-30T23:23:49.809Z","cliente":null,"cameraIds":[],"camerasCount":0}]
+12:06:51 AM [express] GET /api/admin/cameras 304 in 13ms :: [{"id":"c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c","localidadeId":"5c449226-9e7e-4cc5-a2cc-1f354476b8bd","nome":"teste","marca":"reolink","modelo":"teste","hostname":"http://timelapse-sky.ddns.net:9001/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=Skyline@2025","portaHttp":9001,"portaRtsp":null,"usuario":"admin","senha":"Skyline@2025","intervaloCaptura":5,"status":"online","ultimaCaptura":null,"createdAt":"2026-01-27T01:01:38.217Z","localidade":{"id":"5c449226-9e7e-4cc5-a2cc-1f354476b8bd","nome":"Escritório Principal Fd2B","endereco":"Av. Paulista, 1000","cidade":"São Paulo","estado":"SP","descricao":"Escritório principal localizado na Av. Paulista.","clienteId":"d78f12b9-88ce-4161-a6b8-5394a494c9d9","status":"ativo","createdAt":"2026-01-27T00:24:27.911Z","cliente":{"id":"d78f12b9-88ce-4161-a6b8-5394a494c9d9","nome":"Empresa Teste 6G5r","email":"empresa6G5r@teste.com","telefone":"(11) 99999-9999","empresa":"Empresa Teste LTDA","userId":null,"status":"ativo","createdAt":"2026-01-27T00:22:54.820Z"}}}]
+12:07:17 AM [express] POST /api/admin/client-accounts 201 in 1006ms :: {"id":"3a8fa798-caae-44fc-a23b-66af6813a09a","nome":"Gustavo","email":"gustavo@skylineip.com.br","clienteId":"7b31c67e-3624-4514-88bf-0fcfe1a75284","status":"ativo","createdAt":"2026-03-31T00:07:16.090Z","cliente":{"id":"7b31c67e-3624-4514-88bf-0fcfe1a75284","nome":"Ranyere Dias"},"cameraIds":["c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c"],"camerasCount":1}
+12:07:17 AM [express] GET /api/admin/client-accounts 200 in 3ms :: [{"id":"3a8fa798-caae-44fc-a23b-66af6813a09a","nome":"Gustavo","email":"gustavo@skylineip.com.br","clienteId":"7b31c67e-3624-4514-88bf-0fcfe1a75284","status":"ativo","createdAt":"2026-03-31T00:07:16.090Z","cliente":{"id":"7b31c67e-3624-4514-88bf-0fcfe1a75284","nome":"Ranyere Dias"},"cameraIds":["c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c"],"camerasCount":1},{"id":"e4f2921c-a474-46c7-a03b-12987340b6f9","nome":"Cliente Teste Portal","email":"portal-test@example.com","clienteId":null,"status":"ativo","createdAt":"2026-03-30T23:23:49.809Z","cliente":null,"cameraIds":[],"camerasCount":0}]
+12:07:22 AM [express] GET /api/admin/accounts 200 in 2ms :: [{"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com","createdAt":"2026-03-30T22:59:47.856Z"}]
+12:07:29 AM [express] POST /api/admin/logout 200 in 1ms :: {"message":"Logout realizado"}
+12:07:29 AM [express] GET /api/admin/me 401 in 0ms :: {"message":"Não autenticado"}
+12:07:32 AM [express] GET /api/admin/me 401 in 0ms :: {"message":"Não autenticado"}
+12:07:38 AM [express] POST /api/admin/login 401 in 10ms :: {"message":"E-mail ou senha incorretos"}
+12:07:38 AM [express] POST /api/client/login 200 in 86ms :: {"id":"3a8fa798-caae-44fc-a23b-66af6813a09a","nome":"Gustavo","email":"gustavo@skylineip.com.br","clienteId":"7b31c67e-3624-4514-88bf-0fcfe1a75284","cameraIds":["c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c"]}
+12:07:38 AM [express] GET /api/client/me 200 in 6ms :: {"id":"3a8fa798-caae-44fc-a23b-66af6813a09a","nome":"Gustavo","email":"gustavo@skylineip.com.br","clienteId":"7b31c67e-3624-4514-88bf-0fcfe1a75284","status":"ativo","createdAt":"2026-03-31T00:07:16.090Z","cameraIds":["c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c"]}
+12:07:38 AM [express] GET /api/client/cameras 200 in 4ms :: [{"id":"c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c","nome":"teste","marca":"reolink","modelo":"teste","status":"online","ultimaCaptura":null,"intervaloCaptura":5,"localidade":{"nome":"Escritório Principal Fd2B","cidade":"São Paulo","estado":"SP"}}]
+12:07:41 AM [express] GET /api/client/cameras/c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c/captures 200 in 3ms :: []
+[Camera] Using complete URL provided by user
+[Camera] Fetching snapshot from: http://timelapse-sky.ddns.net:9001/cgi-bin/api.cgi?cmd=Snap&channel=0&user=admin&password=***
+[Camera] Error fetching snapshot: fetch failed
+12:07:56 AM [express] GET /api/client/cameras/c5ca4cfe-9cfb-4ee7-8dd9-62be3ec0f02c/snapshot 503 in 10499ms :: {"message":"Erro de conexão: fetch failed"}

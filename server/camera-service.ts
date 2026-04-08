@@ -1,3 +1,33 @@
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+
+// Block cloud metadata endpoints and other dangerous targets.
+// Note: private IP ranges (10.x, 192.168.x) are intentionally allowed
+// because cameras live on LAN. Only specific abuse targets are blocked.
+const BLOCKED_HOSTS = new Set([
+  "169.254.169.254",      // AWS/GCP/Azure instance metadata
+  "metadata.google.internal",
+  "metadata.internal",
+]);
+
+export function isSafeTarget(input: string): boolean {
+  try {
+    // If it looks like a URL, parse and check hostname
+    if (input.startsWith("http://") || input.startsWith("https://")) {
+      const url = new URL(input);
+      if (!["http:", "https:"].includes(url.protocol)) return false;
+      if (BLOCKED_HOSTS.has(url.hostname.toLowerCase())) return false;
+      return true;
+    }
+    // Otherwise treat as hostname
+    return !BLOCKED_HOSTS.has(input.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 export interface CameraConfig {
   hostname?: string | null;
   portaHttp?: number | null;
@@ -96,10 +126,38 @@ async function fetchRawImage(url: string, authHeader?: string): Promise<Snapshot
   }
 }
 
-export async function fetchSnapshotFromGo2rtc(streamUrl: string): Promise<SnapshotResult> {
-  const url = `${streamUrl.replace(/\/$/, '')}/api/frame.jpeg?src=camera1`;
-  console.log(`[go2rtc] Fetching snapshot from: ${url}`);
-  return fetchRawImage(url);
+export async function fetchSnapshotFromGo2rtc(streamUrl: string, source: string = 'camera1_hd'): Promise<SnapshotResult> {
+  const frameUrl = `${streamUrl.replace(/\/$/, '')}/api/frame.jpeg?src=${source}`;
+  console.log(`[go2rtc] Capturing snapshot from: ${frameUrl}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(frameUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return { sucesso: false, mensagem: `go2rtc retornou HTTP ${response.status}` };
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    if (buffer.length < 1000) {
+      return { sucesso: false, mensagem: `Frame muito pequeno (${buffer.length} bytes), possível erro no stream` };
+    }
+
+    console.log(`[go2rtc] Snapshot captured successfully, size: ${buffer.length} bytes`);
+    return { sucesso: true, mensagem: 'Snapshot capturado com sucesso', imageBuffer: buffer, contentType: 'image/jpeg' };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      return { sucesso: false, mensagem: 'Timeout: go2rtc não respondeu em 15 segundos' };
+    }
+    console.error(`[go2rtc] Error:`, error.message);
+    return { sucesso: false, mensagem: `Erro ao capturar snapshot: ${error.message}` };
+  }
 }
 
 export async function testGo2rtcConnection(streamUrl: string): Promise<{ sucesso: boolean; mensagem: string }> {

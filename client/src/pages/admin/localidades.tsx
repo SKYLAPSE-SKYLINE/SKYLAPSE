@@ -239,16 +239,10 @@ export default function LocalidadesPage() {
   ];
 
   return (
-    <AdminLayout
-      title="Localidades"
-      breadcrumbs={[
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Localidades" },
-      ]}
-    >
-      <div className="space-y-4">
+    <AdminLayout title="Localidades">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">
+          <p className="text-sm text-zinc-300">
             Gerencie as localidades de monitoramento
           </p>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

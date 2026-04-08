@@ -1,15 +1,6 @@
-import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Separator } from "@/components/ui/separator";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+import { Menu } from "lucide-react";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -17,56 +8,32 @@ interface AdminLayoutProps {
   breadcrumbs?: { label: string; href?: string }[];
 }
 
-export function AdminLayout({ children, title, breadcrumbs }: AdminLayoutProps) {
-  const sidebarStyle = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
+export function AdminLayout({ children, title }: AdminLayoutProps) {
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-      <div className="flex min-h-screen w-full">
-        <AppSidebar />
-        <SidebarInset className="flex flex-1 flex-col">
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <Separator orientation="vertical" className="h-6" />
-            {breadcrumbs && breadcrumbs.length > 0 && (
-              <Breadcrumb>
-                <BreadcrumbList>
-                  {breadcrumbs.flatMap((crumb, index) => {
-                    const items = [];
-                    if (index > 0) {
-                      items.push(<BreadcrumbSeparator key={`sep-${index}`} />);
-                    }
-                    items.push(
-                      <BreadcrumbItem key={`item-${index}`}>
-                        {crumb.href ? (
-                          <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                        ) : (
-                          <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                        )}
-                      </BreadcrumbItem>
-                    );
-                    return items;
-                  })}
-                </BreadcrumbList>
-              </Breadcrumb>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <ThemeToggle />
-            </div>
-          </header>
-          <main className="flex-1 overflow-auto p-6">
-            {title && (
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-              </div>
-            )}
-            {children}
-          </main>
-        </SidebarInset>
+    <div className="min-h-screen bg-zinc-950 dark">
+      <AppSidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+
+      <div className={`transition-all duration-200 ${collapsed ? "ml-16" : "ml-56"}`}>
+        {/* Top bar */}
+        <header className="sticky top-0 z-20 h-14 flex items-center gap-4 px-6 backdrop-blur-xl bg-zinc-950/80 border-b border-zinc-800/50">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="text-zinc-500 hover:text-white transition-colors"
+            data-testid="button-sidebar-toggle"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          {title && (
+            <h1 className="text-sm font-semibold text-white">{title}</h1>
+          )}
+        </header>
+
+        <main className="p-6 lg:p-8 2xl:p-10">
+          {children}
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }

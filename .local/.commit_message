@@ -1,0 +1,6 @@
+Apply go2rtc/Tailscale schema migration and fix admin auth
+
+- Applied DB migration via SQL: added stream_url column to cameras table, made hostname/porta_http/usuario/senha nullable
+- Fixed admin password hash that was corrupted from a previous session (admin@skylapse.com / skylapse@2024 now works)
+- go2rtc integration code was already in place from previous session: streamUrl field in camera form, conditional validation, camera-service using go2rtc for snapshots, client dashboard showing go2rtc iframe stream
+- All e2e tests pass: admin login, camera form with streamUrl field, "Testar Stream" button, admin dashboard stats

@@ -23,7 +23,7 @@ export const locations = pgTable("locations", {
   cidade: text("cidade"),
   estado: text("estado"),
   descricao: text("descricao"),
-  clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "cascade" }),
+  clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "set null" }),
   status: text("status").default("ativo").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -31,7 +31,7 @@ export const locations = pgTable("locations", {
 // Cameras table - IP cameras
 export const cameras = pgTable("cameras", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  localidadeId: varchar("localidade_id").references(() => locations.id, { onDelete: "cascade" }),
+  localidadeId: varchar("localidade_id").references(() => locations.id, { onDelete: "set null" }),
   nome: text("nome").notNull(),
   marca: text("marca").default("reolink"),
   modelo: text("modelo"),
@@ -50,7 +50,7 @@ export const cameras = pgTable("cameras", {
 // Captures table - photo captures from cameras
 export const captures = pgTable("captures", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  cameraId: varchar("camera_id").references(() => cameras.id, { onDelete: "cascade" }),
+  cameraId: varchar("camera_id").references(() => cameras.id, { onDelete: "set null" }),
   imagemUrl: text("imagem_url").notNull(),
   imagemPath: text("imagem_path").notNull(),
   tamanhoBytes: integer("tamanho_bytes"),
@@ -62,11 +62,14 @@ export const captures = pgTable("captures", {
 // Client accounts table - login accounts for clients (created by admin)
 export const clientAccounts = pgTable("client_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "cascade" }),
+  clienteId: varchar("cliente_id").references(() => clients.id, { onDelete: "set null" }),
   nome: text("nome").notNull(),
   email: text("email").notNull().unique(),
   senhaHash: text("senha_hash").notNull(),
   status: text("status").default("ativo").notNull(),
+  senhaAlterada: boolean("senha_alterada").default(false).notNull(),
+  resetToken: text("reset_token"),
+  resetTokenExpiry: timestamp("reset_token_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -80,7 +83,7 @@ export const clientCameraAccess = pgTable("client_camera_access", {
 // Timelapses table - generated time-lapse videos
 export const timelapses = pgTable("timelapses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  cameraId: varchar("camera_id").references(() => cameras.id, { onDelete: "cascade" }),
+  cameraId: varchar("camera_id").references(() => cameras.id, { onDelete: "set null" }),
   solicitadoPor: varchar("solicitado_por"),
   nome: text("nome"),
   dataInicio: date("data_inicio").notNull(),
@@ -203,7 +206,7 @@ export const insertClientAccountSchema = createInsertSchema(clientAccounts).omit
   createdAt: true,
   senhaHash: true,
 }).extend({
-  senha: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
   cameraIds: z.array(z.string()).optional(),
 });
 
@@ -240,7 +243,7 @@ export const insertAdminAccountSchema = createInsertSchema(adminAccounts).omit({
   createdAt: true,
   senhaHash: true,
 }).extend({
-  senha: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
 });
 
 export type InsertAdminAccount = z.infer<typeof insertAdminAccountSchema>;

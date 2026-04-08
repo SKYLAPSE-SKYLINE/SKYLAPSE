@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Trash2, KeyRound, User } from "lucide-react";
+import { Plus, Trash2, KeyRound, User, Globe, Camera, Wifi, WifiOff, Copy, Check, ExternalLink } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -210,6 +212,32 @@ function ChangePasswordDialog({ accountId }: { accountId: string }) {
   );
 }
 
+type SystemInfo = {
+  portalUrl: string | null;
+  cameras: {
+    id: string;
+    nome: string;
+    status: string;
+    streamUrl: string | null;
+    hostname: string | null;
+    ultimaCaptura: string | null;
+  }[];
+};
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button onClick={copy} className="text-zinc-400 hover:text-zinc-200 transition-colors shrink-0" title="Copiar">
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 export default function AdminSettingsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -217,6 +245,10 @@ export default function AdminSettingsPage() {
 
   const { data: accounts = [], isLoading } = useQuery<AdminAccountDTO[]>({
     queryKey: ["/api/admin/accounts"],
+  });
+
+  const { data: sysInfo, isLoading: sysLoading, isError: sysError } = useQuery<SystemInfo>({
+    queryKey: ["/api/admin/system-info"],
   });
 
   const deleteMutation = useMutation({
@@ -231,12 +263,98 @@ export default function AdminSettingsPage() {
   });
 
   return (
-    <AdminLayout breadcrumbs={[{ label: "Configurações" }]}>
+    <AdminLayout title="Configuracoes">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
           <p className="text-muted-foreground mt-1">Gerencie as contas de acesso ao painel administrativo.</p>
         </div>
+
+        {/* Sistema */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Sistema
+            </CardTitle>
+            <CardDescription>Links e status das câmeras e do portal</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+
+            {/* Portal URL */}
+            {sysInfo?.portalUrl && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Portal do Cliente</p>
+                <div className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2.5">
+                  <Globe className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-sm text-zinc-200 flex-1 truncate font-mono">{sysInfo.portalUrl}</span>
+                  <CopyButton text={sysInfo.portalUrl} />
+                  <a href={sysInfo.portalUrl} target="_blank" rel="noreferrer"
+                    className="text-zinc-400 hover:text-zinc-200 transition-colors shrink-0">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Câmeras */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Câmeras</p>
+              {sysLoading ? (
+                <div className="h-12 rounded-lg bg-zinc-800/40 animate-pulse" />
+              ) : sysError ? (
+                <p className="text-sm text-zinc-500 py-2">Erro ao carregar. Reinicie o servidor.</p>
+              ) : sysInfo?.cameras.length === 0 ? (
+                <p className="text-sm text-zinc-500 py-2">Nenhuma câmera cadastrada.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sysInfo?.cameras.map((cam) => (
+                    <div key={cam.id} className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2.5 space-y-2">
+                      {/* Nome + status */}
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${
+                          cam.status === "online"
+                            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                            : "bg-zinc-500"
+                        }`} />
+                        <span className="text-sm font-medium text-zinc-200 flex-1">{cam.nome}</span>
+                        <span className={`text-xs ${cam.status === "online" ? "text-emerald-400" : "text-zinc-500"}`}>
+                          {cam.status === "online" ? "Online" : "Offline"}
+                        </span>
+                      </div>
+
+                      {/* Stream URL */}
+                      {cam.streamUrl ? (
+                        <div className="flex items-center gap-2">
+                          <Wifi className="h-3 w-3 text-blue-400 shrink-0" />
+                          <span className="text-xs text-zinc-400 font-mono flex-1 truncate">{cam.streamUrl}</span>
+                          <CopyButton text={cam.streamUrl} />
+                          <a href={`${cam.streamUrl}/`} target="_blank" rel="noreferrer"
+                            className="text-zinc-400 hover:text-zinc-200 transition-colors shrink-0">
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      ) : cam.hostname ? (
+                        <div className="flex items-center gap-2">
+                          <WifiOff className="h-3 w-3 text-zinc-500 shrink-0" />
+                          <span className="text-xs text-zinc-500 flex-1 truncate">{cam.hostname}</span>
+                        </div>
+                      ) : null}
+
+                      {/* Última captura */}
+                      {cam.ultimaCaptura && (
+                        <p className="text-[11px] text-zinc-500">
+                          Última captura:{" "}
+                          {formatDistanceToNow(new Date(cam.ultimaCaptura), { addSuffix: true, locale: ptBR })}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

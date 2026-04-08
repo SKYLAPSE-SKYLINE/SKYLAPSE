@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import express from "express";
+import path from "path";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
@@ -10,9 +12,13 @@ import {
   insertAdminAccountSchema,
 } from "@shared/schema";
 import { z } from "zod";
-import { testCameraConnection, fetchSnapshot, testGo2rtcConnection } from "./camera-service";
+import { testCameraConnection, fetchSnapshot, testGo2rtcConnection, isSafeTarget } from "./camera-service";
+import { sendWelcomeEmail, sendPasswordResetEmail } from "./email-service";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import archiver from "archiver";
+import crypto from "crypto";
+import { audit } from "./audit";
 
 declare global {
   namespace Express {
@@ -26,6 +32,35 @@ declare global {
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 const ADMIN_JWT_SECRET = process.env.SESSION_SECRET! + "_admin";
 
+// Rate limiting for login endpoints
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
+function resetRateLimit(ip: string) {
+  loginAttempts.delete(ip);
+}
+
+// Cleanup expired entries every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) {
+    if (now > entry.resetAt) loginAttempts.delete(ip);
+  }
+}, 30 * 60 * 1000);
+
 export const isAdminAuthenticated: RequestHandler = async (req, res, next) => {
   const token = req.cookies?.["skylapse-admin-token"];
   if (!token) {
@@ -33,6 +68,12 @@ export const isAdminAuthenticated: RequestHandler = async (req, res, next) => {
   }
   try {
     const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminAccountId: string };
+    // Check account still exists in DB — allows immediate revocation when account is deleted
+    const account = await storage.getAdminAccount(payload.adminAccountId);
+    if (!account) {
+      res.clearCookie("skylapse-admin-token");
+      return res.status(401).json({ message: "Conta não encontrada ou removida" });
+    }
     req.adminAccountId = payload.adminAccountId;
     next();
   } catch {
@@ -60,10 +101,116 @@ export const isClientAuthenticated: RequestHandler = async (req, res, next) => {
   }
 };
 
+// Accepts either admin OR client token — used for shared resources (captures, videos)
+const isAnyAuthenticated: RequestHandler = async (req, res, next) => {
+  const adminToken = req.cookies?.["skylapse-admin-token"];
+  const clientToken = req.cookies?.["skylapse-client-token"];
+
+  if (adminToken) {
+    try {
+      const payload = jwt.verify(adminToken, ADMIN_JWT_SECRET) as { adminAccountId: string };
+      const account = await storage.getAdminAccount(payload.adminAccountId);
+      if (account) {
+        req.adminAccountId = payload.adminAccountId;
+        return next();
+      }
+    } catch { /* fall through to client check */ }
+  }
+
+  if (clientToken) {
+    try {
+      const payload = jwt.verify(clientToken, CLIENT_JWT_SECRET) as { clientAccountId: string };
+      const account = await storage.getClientAccountStatus(payload.clientAccountId);
+      if (account && account.status === "ativo") {
+        req.clientAccountId = payload.clientAccountId;
+        return next();
+      }
+    } catch { /* fall through to 401 */ }
+  }
+
+  return res.status(401).json({ message: "Não autenticado" });
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Strip camera credentials from list responses (admin detail endpoint keeps them for editing)
+  function stripCameraCredentials(camera: any) {
+    const { usuario, senha, hostname, portaHttp, ...safe } = camera;
+    return safe;
+  }
+
+  // Sanitize filename for Content-Disposition header
+  function sanitizeFilename(name: string): string {
+    return name.replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+  }
+
+  // Validate file path is within uploads directory (prevents path traversal)
+  const UPLOADS_DIR = path.resolve("uploads");
+  function isPathSafe(filePath: string): boolean {
+    const resolved = path.resolve(filePath);
+    return resolved.startsWith(UPLOADS_DIR);
+  }
+
+  // Validate date string format (YYYY-MM-DD)
+  function isValidDate(str: string): boolean {
+    const d = new Date(str);
+    return !isNaN(d.getTime());
+  }
+
+  // Serve captured images and generated videos (auth required)
+  app.use("/api/captures", isAnyAuthenticated, express.static(path.resolve("uploads/captures")));
+  app.use("/api/videos", isAnyAuthenticated, express.static(path.resolve("uploads/videos")));
+
+  // Dashboard extended — activity chart + storage size
+  app.get("/api/admin/dashboard-extra", isAdminAuthenticated, async (req, res) => {
+    try {
+      const extra = await storage.getDashboardExtra();
+
+      let storageBytes = 0;
+      try {
+        const fs = await import("fs");
+        function getDirSize(dir: string): number {
+          if (!fs.existsSync(dir)) return 0;
+          let total = 0;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = `${dir}/${entry.name}`;
+            if (entry.isDirectory()) total += getDirSize(full);
+            else if (entry.isFile()) try { total += fs.statSync(full).size; } catch { /* skip */ }
+          }
+          return total;
+        }
+        storageBytes = getDirSize(path.resolve("uploads/captures"));
+      } catch { /* ignore */ }
+
+      res.json({ ...extra, storageBytes });
+    } catch (error) {
+      console.error("dashboard-extra error:", error);
+      res.status(500).json({ message: "Failed" });
+    }
+  });
+
+  // System info — portal URL + cameras with stream URLs
+  app.get("/api/admin/system-info", isAdminAuthenticated, async (req, res) => {
+    try {
+      const allCameras = await storage.getCameras();
+      res.json({
+        portalUrl: process.env.PORTAL_URL || null,
+        cameras: allCameras.map((c) => ({
+          id: c.id,
+          nome: c.nome,
+          status: c.status,
+          streamUrl: c.streamUrl || null,
+          hostname: c.hostname || null,
+          ultimaCaptura: c.ultimaCaptura || null,
+        })),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch system info" });
+    }
+  });
+
   // Admin Stats
   app.get("/api/admin/stats", isAdminAuthenticated, async (req, res) => {
     try {
@@ -215,7 +362,7 @@ export async function registerRoutes(
   app.get("/api/admin/cameras", isAdminAuthenticated, async (req, res) => {
     try {
       const cameras = await storage.getCameras();
-      res.json(cameras);
+      res.json(cameras.map(stripCameraCredentials));
     } catch (error) {
       console.error("Error fetching cameras:", error);
       res.status(500).json({ message: "Failed to fetch cameras" });
@@ -225,7 +372,7 @@ export async function registerRoutes(
   app.get("/api/admin/cameras/offline", isAdminAuthenticated, async (req, res) => {
     try {
       const cameras = await storage.getOfflineCameras();
-      res.json(cameras);
+      res.json(cameras.map(stripCameraCredentials));
     } catch (error) {
       console.error("Error fetching offline cameras:", error);
       res.status(500).json({ message: "Failed to fetch offline cameras" });
@@ -260,16 +407,85 @@ export async function registerRoutes(
 
   app.get("/api/admin/cameras/:id/captures", isAdminAuthenticated, async (req, res) => {
     try {
-      const { dataInicio, dataFim } = req.query;
-      const captures = await storage.getCaptures(
+      const { dataInicio, dataFim, page, limit } = req.query;
+      if ((dataInicio && !isValidDate(dataInicio as string)) || (dataFim && !isValidDate(dataFim as string))) {
+        return res.status(400).json({ message: "Formato de data inválido" });
+      }
+      const result = await storage.getCaptures(
         req.params.id,
         dataInicio as string | undefined,
-        dataFim as string | undefined
+        dataFim as string | undefined,
+        page ? Math.max(1, parseInt(page as string, 10) || 1) : 1,
+        limit ? Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50)) : 50,
       );
-      res.json(captures);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching captures:", error);
       res.status(500).json({ message: "Failed to fetch captures" });
+    }
+  });
+
+  app.get("/api/admin/cameras/:id/captures/download", isAdminAuthenticated, async (req, res) => {
+    try {
+      const { dataInicio, dataFim } = req.query;
+      if (!dataInicio || !dataFim) {
+        return res.status(400).json({ message: "Informe dataInicio e dataFim" });
+      }
+      const captures = await storage.getAllCaptures(
+        req.params.id,
+        dataInicio as string,
+        dataFim as string
+      );
+      if (!captures || captures.length === 0) {
+        return res.status(404).json({ message: "Nenhuma captura encontrada no período" });
+      }
+      const camera = await storage.getCamera(req.params.id);
+      const nomeCamera = camera?.nome || "camera";
+      const filename = sanitizeFilename(`${nomeCamera}_${dataInicio}_${dataFim}`) + ".zip";
+
+      res.set("Content-Type", "application/zip");
+      res.set("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const archive = archiver("zip", { zlib: { level: 1 } });
+      archive.pipe(res);
+
+      for (const capture of captures) {
+        if (capture.imagemPath) {
+          const filePath = path.resolve(capture.imagemPath);
+          if (!isPathSafe(filePath)) continue;
+          const fileName = capture.capturadoEm
+            ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
+            : path.basename(filePath);
+          archive.file(filePath, { name: fileName });
+        }
+      }
+
+      await archive.finalize();
+    } catch (error) {
+      console.error("Error downloading admin captures ZIP:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Erro ao gerar ZIP" });
+      }
+    }
+  });
+
+  app.delete("/api/admin/captures/:id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const capture = await storage.deleteCapture(req.params.id);
+      if (!capture) {
+        return res.status(404).json({ message: "Captura não encontrada" });
+      }
+      // Deletar arquivo do disco
+      if (capture.imagemPath && isPathSafe(capture.imagemPath)) {
+        const fs = await import("fs");
+        if (fs.existsSync(capture.imagemPath)) {
+          fs.unlinkSync(capture.imagemPath);
+        }
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting capture:", error);
+      res.status(500).json({ message: "Erro ao deletar captura" });
     }
   });
 
@@ -277,7 +493,8 @@ export async function registerRoutes(
     try {
       const data = insertCameraSchema.parse(req.body);
       const camera = await storage.createCamera(data);
-      res.status(201).json(camera);
+      audit("camera.created", { adminId: req.adminAccountId, cameraId: camera.id, nome: camera.nome });
+      res.status(201).json(stripCameraCredentials(camera));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -293,12 +510,19 @@ export async function registerRoutes(
 
       // go2rtc mode: test via /api/streams
       if (streamUrl) {
+        if (!isSafeTarget(streamUrl)) {
+          return res.json({ sucesso: false, mensagem: "URL de stream não permitida" });
+        }
         const result = await testGo2rtcConnection(streamUrl);
         return res.json(result);
       }
 
       if (!hostname || !portaHttp || !usuario || !senha) {
         return res.json({ sucesso: false, mensagem: "Dados de conexão incompletos" });
+      }
+
+      if (!isSafeTarget(hostname)) {
+        return res.json({ sucesso: false, mensagem: "Hostname não permitido" });
       }
 
       const result = await testCameraConnection({
@@ -325,6 +549,34 @@ export async function registerRoutes(
     }
   });
 
+  // Fast thumbnail from last saved capture (serves file from disk)
+  app.get("/api/admin/cameras/:id/thumbnail", isAdminAuthenticated, async (req, res) => {
+    try {
+      const capture = await storage.getLastCapture(req.params.id);
+      if (!capture) {
+        return res.status(404).json({ message: "Nenhuma captura encontrada" });
+      }
+      if (!isPathSafe(capture.imagemPath)) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      const fs = await import("fs");
+      if (!fs.existsSync(capture.imagemPath)) {
+        return res.status(404).json({ message: "Arquivo não encontrado" });
+      }
+      res.set("Content-Type", "image/jpeg");
+      res.set("Cache-Control", "public, max-age=300");
+      res.set("ETag", `"${capture.id}"`);
+      if (req.headers["if-none-match"] === `"${capture.id}"`) {
+        return res.status(304).end();
+      }
+      fs.createReadStream(capture.imagemPath).pipe(res);
+    } catch (error) {
+      console.error("Error serving thumbnail:", error);
+      res.status(500).json({ message: "Erro ao servir thumbnail" });
+    }
+  });
+
+  // Live snapshot (fetches from camera in real-time — slower)
   app.get("/api/admin/cameras/:id/snapshot", isAdminAuthenticated, async (req, res) => {
     try {
       const camera = await storage.getCamera(req.params.id);
@@ -363,7 +615,7 @@ export async function registerRoutes(
       if (!camera) {
         return res.status(404).json({ message: "Camera not found" });
       }
-      res.json(camera);
+      res.json(stripCameraCredentials(camera));
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
@@ -379,6 +631,7 @@ export async function registerRoutes(
       if (!deleted) {
         return res.status(404).json({ message: "Camera not found" });
       }
+      audit("camera.deleted", { adminId: req.adminAccountId, cameraId: req.params.id });
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting camera:", error);
@@ -422,10 +675,9 @@ export async function registerRoutes(
 
   app.post("/api/admin/timelapses", isAdminAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
       const data = insertTimelapseSchema.parse({
         ...req.body,
-        solicitadoPor: userId,
+        solicitadoPor: req.adminAccountId,
         status: "na_fila",
       });
       const timelapse = await storage.createTimelapse(data);
@@ -441,9 +693,16 @@ export async function registerRoutes(
 
   app.delete("/api/admin/timelapses/:id", isAdminAuthenticated, async (req, res) => {
     try {
-      const deleted = await storage.deleteTimelapse(req.params.id);
-      if (!deleted) {
+      const timelapse = await storage.deleteTimelapse(req.params.id);
+      if (!timelapse) {
         return res.status(404).json({ message: "Timelapse not found" });
+      }
+      // Deletar arquivo de vídeo do disco
+      if (timelapse.videoPath && isPathSafe(timelapse.videoPath)) {
+        const fs = await import("fs");
+        if (fs.existsSync(timelapse.videoPath)) {
+          fs.unlinkSync(timelapse.videoPath);
+        }
       }
       res.status(204).send();
     } catch (error) {
@@ -500,7 +759,7 @@ export async function registerRoutes(
       if (existing) {
         return res.status(409).json({ message: "Já existe uma conta com este e-mail" });
       }
-      const senhaHash = await bcrypt.hash(data.senha, 10);
+      const senhaHash = await bcrypt.hash(data.senha, 12);
       const account = await storage.createClientAccount({
         clienteId: data.clienteId || null,
         nome: data.nome,
@@ -512,6 +771,17 @@ export async function registerRoutes(
         await storage.setClientCameraAccess(account.id, data.cameraIds);
       }
       const full = await storage.getClientAccount(account.id);
+
+      // Send welcome email with credentials (non-blocking)
+      const clienteNome = full?.cliente?.nome;
+      sendWelcomeEmail({
+        nome: data.nome,
+        email: data.email,
+        senha: data.senha,
+        clienteNome: clienteNome || undefined,
+      }).catch((err) => console.error("[email] Falha ao enviar:", err));
+
+      audit("client.account.created", { adminId: req.adminAccountId, newAccountId: account.id, email: data.email });
       res.status(201).json(toSafeAccountDTO(full));
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -525,7 +795,7 @@ export async function registerRoutes(
   app.put("/api/admin/client-accounts/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const updateSchema = insertClientAccountSchema.partial().extend({
-        senha: z.string().min(6).optional(),
+        senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").optional(),
         cameraIds: z.array(z.string()).optional(),
       });
       const parsed = updateSchema.parse(req.body);
@@ -541,8 +811,8 @@ export async function registerRoutes(
 
       type ClientAccountUpdate = Parameters<typeof storage.updateClientAccount>[1];
       const updateData: ClientAccountUpdate = { ...rest };
-      if (senha && senha.length >= 6) {
-        updateData.senhaHash = await bcrypt.hash(senha, 10);
+      if (senha && senha.length >= 8) {
+        updateData.senhaHash = await bcrypt.hash(senha, 12);
       }
       const account = await storage.updateClientAccount(req.params.id, updateData);
       if (!account) return res.status(404).json({ message: "Account not found" });
@@ -564,6 +834,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteClientAccount(req.params.id);
       if (!deleted) return res.status(404).json({ message: "Account not found" });
+      audit("client.account.deleted", { adminId: req.adminAccountId, deletedAccountId: req.params.id });
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting client account:", error);
@@ -574,6 +845,10 @@ export async function registerRoutes(
   // Client login (JWT-based, separate from admin Replit Auth session)
   app.post("/api/client/login", async (req, res) => {
     try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(ip)) {
+        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
+      }
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha é obrigatória"),
@@ -585,26 +860,31 @@ export async function registerRoutes(
       const { email, senha } = parsed.data;
       const account = await storage.getClientAccountByEmail(email);
       if (!account) {
+        audit("client.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       if (account.status !== "ativo") {
+        audit("client.login.failure", { email, ip, reason: "account_inactive" });
         return res.status(403).json({ message: "Conta desativada. Entre em contato com o suporte." });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
+        audit("client.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
+      audit("client.login.success", { accountId: account.id, email, ip });
+      resetRateLimit(ip);
       const cameraIds = await storage.getClientCameraIds(account.id);
       const token = jwt.sign(
         { clientAccountId: account.id },
         CLIENT_JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "24h" }
       );
       res.cookie("skylapse-client-token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: "strict",
       });
       res.json({ 
         id: account.id, 
@@ -622,6 +902,10 @@ export async function registerRoutes(
   // ── Admin Auth ────────────────────────────────────────────────────────────
   app.post("/api/admin/login", async (req, res) => {
     try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(ip)) {
+        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
+      }
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha obrigatória"),
@@ -633,22 +917,26 @@ export async function registerRoutes(
       const { email, senha } = parsed.data;
       const account = await storage.getAdminAccountByEmail(email);
       if (!account) {
+        audit("admin.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
+        audit("admin.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
+      audit("admin.login.success", { accountId: account.id, email, ip });
+      resetRateLimit(ip);
       const token = jwt.sign(
         { adminAccountId: account.id },
         ADMIN_JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "24h" }
       );
       res.cookie("skylapse-admin-token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: "strict",
       });
       res.json({ id: account.id, nome: account.nome, email: account.email });
     } catch (error) {
@@ -658,6 +946,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/logout", (req, res) => {
+    audit("admin.logout", { adminAccountId: req.adminAccountId });
     res.clearCookie("skylapse-admin-token");
     res.json({ message: "Logout realizado" });
   });
@@ -711,7 +1000,7 @@ export async function registerRoutes(
       const updateSchema = z.object({
         nome: z.string().min(1).optional(),
         email: z.string().email().optional(),
-        senha: z.string().min(6).optional(),
+        senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").optional(),
       });
       const data = updateSchema.parse(req.body);
       const updateData: Partial<{ nome: string; email: string; senhaHash: string }> = {};
@@ -787,16 +1076,97 @@ export async function registerRoutes(
       if (!allowedIds.includes(req.params.id)) {
         return res.status(403).json({ message: "Acesso negado a esta câmera" });
       }
-      const { dataInicio, dataFim } = req.query;
+      const { dataInicio, dataFim, page, limit } = req.query;
       const result = await storage.getCaptures(
         req.params.id,
         dataInicio as string | undefined,
-        dataFim as string | undefined
+        dataFim as string | undefined,
+        page ? Math.max(1, parseInt(page as string, 10) || 1) : 1,
+        limit ? Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50)) : 50,
       );
       res.json(result);
     } catch (error) {
       console.error("Error fetching client captures:", error);
       res.status(500).json({ message: "Erro ao buscar capturas" });
+    }
+  });
+
+  app.get("/api/client/cameras/:id/captures/download", isClientAuthenticated, async (req, res) => {
+    try {
+      const allowedIds = await storage.getClientCameraIds(req.clientAccountId!);
+      if (!allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ message: "Acesso negado a esta câmera" });
+      }
+      const { dataInicio, dataFim } = req.query;
+      if (!dataInicio || !dataFim) {
+        return res.status(400).json({ message: "Informe dataInicio e dataFim" });
+      }
+      const captures = await storage.getAllCaptures(
+        req.params.id,
+        dataInicio as string,
+        dataFim as string
+      );
+      if (!captures || captures.length === 0) {
+        return res.status(404).json({ message: "Nenhuma captura encontrada no período" });
+      }
+
+      const camera = await storage.getCamera(req.params.id);
+      const nomeCamera = camera?.nome || "camera";
+      const filename = sanitizeFilename(`${nomeCamera}_${dataInicio}_${dataFim}`) + ".zip";
+
+      res.set("Content-Type", "application/zip");
+      res.set("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const archive = archiver("zip", { zlib: { level: 1 } });
+      archive.pipe(res);
+
+      for (const capture of captures) {
+        if (capture.imagemPath) {
+          const filePath = path.resolve(capture.imagemPath);
+          if (!isPathSafe(filePath)) continue;
+          const fileName = capture.capturadoEm
+            ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
+            : path.basename(filePath);
+          archive.file(filePath, { name: fileName });
+        }
+      }
+
+      await archive.finalize();
+    } catch (error) {
+      console.error("Error downloading captures ZIP:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Erro ao gerar ZIP" });
+      }
+    }
+  });
+
+  app.get("/api/client/cameras/:id/thumbnail", isClientAuthenticated, async (req, res) => {
+    try {
+      const allowedIds = await storage.getClientCameraIds(req.clientAccountId!);
+      if (!allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ message: "Acesso negado a esta câmera" });
+      }
+      const capture = await storage.getLastCapture(req.params.id);
+      if (!capture) {
+        return res.status(404).json({ message: "Nenhuma captura encontrada" });
+      }
+      if (!isPathSafe(capture.imagemPath)) {
+        return res.status(403).json({ message: "Acesso negado" });
+      }
+      const fs = await import("fs");
+      if (!fs.existsSync(capture.imagemPath)) {
+        return res.status(404).json({ message: "Arquivo não encontrado" });
+      }
+      res.set("Content-Type", "image/jpeg");
+      res.set("Cache-Control", "public, max-age=300");
+      res.set("ETag", `"${capture.id}"`);
+      if (req.headers["if-none-match"] === `"${capture.id}"`) {
+        return res.status(304).end();
+      }
+      fs.createReadStream(capture.imagemPath).pipe(res);
+    } catch (error) {
+      console.error("Error serving client thumbnail:", error);
+      res.status(500).json({ message: "Erro ao servir thumbnail" });
     }
   });
 
@@ -830,6 +1200,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/client/logout", (req, res) => {
+    audit("client.logout", { clientAccountId: req.clientAccountId });
     res.clearCookie("skylapse-client-token");
     res.json({ message: "Logout realizado" });
   });
@@ -851,11 +1222,94 @@ export async function registerRoutes(
         clienteId: account.clienteId,
         status: account.status,
         createdAt: account.createdAt,
+        senhaAlterada: account.senhaAlterada,
         cameraIds,
       });
     } catch (error) {
       console.error("Error fetching client me:", error);
       res.status(500).json({ message: "Erro ao buscar dados" });
+    }
+  });
+
+  // Change password (authenticated client)
+  app.post("/api/client/change-password", isClientAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        senhaAtual: z.string().min(1),
+        novaSenha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
+      }
+      const account = await storage.getClientAccountByEmail(
+        (await storage.getClientAccount(req.clientAccountId!))!.email
+      );
+      if (!account) return res.status(404).json({ message: "Conta não encontrada" });
+
+      const valid = await bcrypt.compare(parsed.data.senhaAtual, account.senhaHash);
+      if (!valid) return res.status(401).json({ message: "Senha atual incorreta" });
+
+      const senhaHash = await bcrypt.hash(parsed.data.novaSenha, 12);
+      await storage.updateClientPassword(account.id, senhaHash);
+      audit("client.password.changed", { accountId: account.id, ip: req.ip });
+      res.json({ message: "Senha alterada com sucesso" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ message: "Erro ao alterar senha" });
+    }
+  });
+
+  // Request password reset (public)
+  app.post("/api/client/forgot-password", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(ip)) {
+        return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
+      }
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+      const account = await storage.getClientAccountByEmail(email);
+      // Always return success to avoid email enumeration
+      if (!account) return res.json({ message: "Se o e-mail existir, você receberá as instruções." });
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await storage.setResetToken(account.id, token, expiry);
+
+      const resetUrl = `${process.env.PORTAL_URL || "http://localhost:3000"}/cliente/reset-senha?token=${token}`;
+      sendPasswordResetEmail({ nome: account.nome, email: account.email, resetUrl }).catch(console.error);
+
+      res.json({ message: "Se o e-mail existir, você receberá as instruções." });
+    } catch (error) {
+      console.error("Error forgot password:", error);
+      res.status(500).json({ message: "Erro ao processar solicitação" });
+    }
+  });
+
+  // Reset password with token (public)
+  app.post("/api/client/reset-password", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      if (!checkRateLimit(ip)) {
+        return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
+      }
+      const schema = z.object({
+        token: z.string().min(1),
+        novaSenha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+      });
+      const { token, novaSenha } = schema.parse(req.body);
+      const account = await storage.getClientAccountByResetToken(token);
+      if (!account || !account.resetTokenExpiry || new Date() > account.resetTokenExpiry) {
+        return res.status(400).json({ message: "Link inválido ou expirado. Solicite um novo." });
+      }
+      const senhaHash = await bcrypt.hash(novaSenha, 12);
+      await storage.updateClientPassword(account.id, senhaHash);
+      await storage.clearResetToken(account.id);
+      audit("client.password.reset", { accountId: account.id, ip: req.ip });
+      res.json({ message: "Senha redefinida com sucesso. Faça login com sua nova senha." });
+    } catch (error) {
+      console.error("Error reset password:", error);
+      res.status(500).json({ message: "Erro ao redefinir senha" });
     }
   });
 

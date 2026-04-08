@@ -299,16 +299,10 @@ export default function ContasPage() {
   const selectedCameraIds = form.watch("cameraIds");
 
   return (
-    <AdminLayout
-      title="Contas de Clientes"
-      breadcrumbs={[
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Contas de Clientes" },
-      ]}
-    >
-      <div className="space-y-4">
+    <AdminLayout title="Contas de Clientes">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">
+          <p className="text-sm text-zinc-300">
             Crie e gerencie os acessos dos clientes ao portal
           </p>
           <Button onClick={() => handleOpenDialog()} data-testid="button-add-account">

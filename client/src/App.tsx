@@ -21,6 +21,7 @@ import AdminSettingsPage from "@/pages/admin/settings";
 import LoginPage from "@/pages/client-login";
 import ClienteDashboard from "@/pages/cliente/dashboard";
 import ClienteCameraCaptures from "@/pages/cliente/camera-captures";
+import ResetSenhaPage from "@/pages/cliente/reset-senha";
 
 function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
   const [, navigate] = useLocation();
@@ -52,26 +53,7 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AdminRoutes() {
-  return (
-    <AdminProtectedRoute>
-      <Switch>
-        <Route path="/admin/dashboard" component={AdminDashboard} />
-        <Route path="/admin/clientes" component={ClientesPage} />
-        <Route path="/admin/contas" component={ContasPage} />
-        <Route path="/admin/localidades" component={LocalidadesPage} />
-        <Route path="/admin/cameras" component={CamerasPage} />
-        <Route path="/admin/cameras/:id/live" component={CameraLivePage} />
-        <Route path="/admin/cameras/:id/galeria" component={CameraGalleryPage} />
-        <Route path="/admin/timelapses" component={TimelapsesPage} />
-        <Route path="/admin/configuracoes" component={AdminSettingsPage} />
-        <Route component={NotFound} />
-      </Switch>
-    </AdminProtectedRoute>
-  );
-}
-
-function Router() {
+function AppRouter() {
   const { isLoading } = useAuth();
 
   if (isLoading) {
@@ -81,6 +63,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/cliente/reset-senha" component={ResetSenhaPage} />
       <Route path="/cliente/dashboard">
         <ClientProtectedRoute>
           <ClienteDashboard />
@@ -91,9 +74,15 @@ function Router() {
           <ClienteCameraCaptures />
         </ClientProtectedRoute>
       </Route>
-      <Route path="/admin/:rest*">
-        <AdminRoutes />
-      </Route>
+      <Route path="/admin/dashboard"><AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute></Route>
+      <Route path="/admin/clientes"><AdminProtectedRoute><ClientesPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/contas"><AdminProtectedRoute><ContasPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/localidades"><AdminProtectedRoute><LocalidadesPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/cameras/:id/live"><AdminProtectedRoute><CameraLivePage /></AdminProtectedRoute></Route>
+      <Route path="/admin/cameras/:id/galeria"><AdminProtectedRoute><CameraGalleryPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/cameras"><AdminProtectedRoute><CamerasPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/timelapses"><AdminProtectedRoute><TimelapsesPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/configuracoes"><AdminProtectedRoute><AdminSettingsPage /></AdminProtectedRoute></Route>
       <Route path="/" component={LoginPage} />
       <Route component={NotFound} />
     </Switch>
@@ -103,10 +92,10 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light" storageKey="skylapse-theme">
+      <ThemeProvider defaultTheme="dark" storageKey="skylapse-theme">
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <AppRouter />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

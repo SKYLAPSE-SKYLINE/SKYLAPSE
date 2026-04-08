@@ -4,7 +4,23 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { storage } from "./storage";
+import { startCaptureJob } from "./capture-job";
+import { startTimelapseJob } from "./timelapse-job";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
+// Validate SESSION_SECRET at startup
+if (!process.env.SESSION_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("FATAL: SESSION_SECRET must be set in production");
+    process.exit(1);
+  }
+  console.warn("⚠ SESSION_SECRET not set — using insecure default (dev only)");
+  process.env.SESSION_SECRET = "skylapse-dev-secret-insecure";
+} else if (process.env.SESSION_SECRET.length < 32 && process.env.NODE_ENV === "production") {
+  console.error("FATAL: SESSION_SECRET must be at least 32 characters in production");
+  process.exit(1);
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,6 +41,24 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+// Security headers
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // Allow iframes only for go2rtc stream URLs (same-origin + tailscale funnel)
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self' https://*.ts.net; connect-src 'self' https://*.ts.net; font-src 'self' data:;"
+  );
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -48,11 +82,13 @@ app.use((req, res, next) => {
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
+  const SENSITIVE_PATHS = ["/api/admin/login", "/api/client/login", "/api/client/change-password", "/api/client/forgot-password", "/api/client/reset-password"];
+
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      if (capturedJsonResponse && !SENSITIVE_PATHS.includes(path)) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
@@ -66,7 +102,8 @@ app.use((req, res, next) => {
 async function seedAdminAccount() {
   const count = await storage.countAdminAccounts();
   if (count === 0) {
-    const tempPassword = "skylapse@2024";
+    // Generate a random password for the initial admin account
+    const tempPassword = crypto.randomBytes(12).toString("base64url");
     const senhaHash = await bcrypt.hash(tempPassword, 12);
     await storage.createAdminAccount({
       nome: "Administrador",
@@ -77,7 +114,7 @@ async function seedAdminAccount() {
     console.log("  SKYLAPSE — Conta admin criada automaticamente");
     console.log("  E-mail: admin@skylapse.com");
     console.log(`  Senha:  ${tempPassword}`);
-    console.log("  Altere as credenciais após o primeiro login!");
+    console.log("  ⚠ ANOTE ESTA SENHA — ela não será exibida novamente!");
     console.log("═══════════════════════════════════════════════════════");
   }
 }
@@ -113,15 +150,16 @@ async function seedAdminAccount() {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "3000", 10);
   httpServer.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host: process.env.HOST || "0.0.0.0",
     },
     () => {
       log(`serving on port ${port}`);
+      startCaptureJob();
+      startTimelapseJob();
     },
   );
 })();

@@ -36,9 +36,11 @@ export interface IStorage {
   deleteCamera(id: string): Promise<boolean>;
 
   // Captures
-  getCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]>;
+  getCaptures(cameraId: string, dataInicio?: string, dataFim?: string, page?: number, limit?: number): Promise<{ data: Capture[]; total: number }>;
+  getAllCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]>;
   getLastCapture(cameraId: string): Promise<Capture | undefined>;
   createCapture(capture: InsertCapture): Promise<Capture>;
+  deleteCapture(id: string): Promise<Capture | undefined>;
   getTodayCapturesCount(): Promise<number>;
 
   // Timelapses
@@ -60,6 +62,10 @@ export interface IStorage {
   deleteClientAccount(id: string): Promise<boolean>;
   setClientCameraAccess(clientAccountId: string, cameraIds: string[]): Promise<void>;
   getClientCameraIds(clientAccountId: string): Promise<string[]>;
+  updateClientPassword(id: string, senhaHash: string): Promise<void>;
+  getClientAccountByResetToken(token: string): Promise<ClientAccount | undefined>;
+  setResetToken(id: string, token: string, expiry: Date): Promise<void>;
+  clearResetToken(id: string): Promise<void>;
 
   // Admin Accounts
   getAdminAccounts(): Promise<Omit<AdminAccount, "senhaHash">[]>;
@@ -69,6 +75,12 @@ export interface IStorage {
   updateAdminAccount(id: string, data: Partial<{ nome: string; email: string; senhaHash: string }>): Promise<AdminAccount | undefined>;
   deleteAdminAccount(id: string): Promise<boolean>;
   countAdminAccounts(): Promise<number>;
+
+  // Dashboard extra
+  getDashboardExtra(): Promise<{
+    activityDays: { dia: string; total: number }[];
+    totalCaptures: number;
+  }>;
 
   // Stats
   getStats(): Promise<{
@@ -175,9 +187,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Captures
-  async getCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]> {
+  async getCaptures(cameraId: string, dataInicio?: string, dataFim?: string, page = 1, limit = 50): Promise<{ data: Capture[]; total: number }> {
     let conditions = [eq(captures.cameraId, cameraId)];
-    
+
     if (dataInicio) {
       conditions.push(gte(captures.capturadoEm, new Date(dataInicio)));
     }
@@ -187,11 +199,34 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(captures.capturadoEm, endDate));
     }
 
+    const whereClause = and(...conditions);
+    const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(captures).where(whereClause);
+    const total = Number(countResult.count);
+
+    const data = await db.select()
+      .from(captures)
+      .where(whereClause)
+      .orderBy(desc(captures.capturadoEm))
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    return { data, total };
+  }
+
+  async getAllCaptures(cameraId: string, dataInicio?: string, dataFim?: string): Promise<Capture[]> {
+    let conditions = [eq(captures.cameraId, cameraId)];
+    if (dataInicio) {
+      conditions.push(gte(captures.capturadoEm, new Date(dataInicio)));
+    }
+    if (dataFim) {
+      const endDate = new Date(dataFim);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(captures.capturadoEm, endDate));
+    }
     return await db.select()
       .from(captures)
       .where(and(...conditions))
-      .orderBy(desc(captures.capturadoEm))
-      .limit(100);
+      .orderBy(desc(captures.capturadoEm));
   }
 
   async getLastCapture(cameraId: string): Promise<Capture | undefined> {
@@ -206,6 +241,11 @@ export class DatabaseStorage implements IStorage {
   async createCapture(capture: InsertCapture): Promise<Capture> {
     const [newCapture] = await db.insert(captures).values(capture).returning();
     return newCapture;
+  }
+
+  async deleteCapture(id: string): Promise<Capture | undefined> {
+    const [deleted] = await db.delete(captures).where(eq(captures.id, id)).returning();
+    return deleted;
   }
 
   async getTodayCapturesCount(): Promise<number> {
@@ -258,9 +298,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteTimelapse(id: string): Promise<boolean> {
+  async deleteTimelapse(id: string): Promise<any> {
     const result = await db.delete(timelapses).where(eq(timelapses.id, id)).returning();
-    return result.length > 0;
+    return result.length > 0 ? result[0] : null;
   }
 
   // Client Accounts
@@ -340,6 +380,30 @@ export class DatabaseStorage implements IStorage {
     return result.map((r) => r.cameraId);
   }
 
+  async updateClientPassword(id: string, senhaHash: string): Promise<void> {
+    await db.update(clientAccounts)
+      .set({ senhaHash, senhaAlterada: true })
+      .where(eq(clientAccounts.id, id));
+  }
+
+  async getClientAccountByResetToken(token: string): Promise<ClientAccount | undefined> {
+    const [account] = await db.select().from(clientAccounts)
+      .where(eq(clientAccounts.resetToken, token));
+    return account;
+  }
+
+  async setResetToken(id: string, token: string, expiry: Date): Promise<void> {
+    await db.update(clientAccounts)
+      .set({ resetToken: token, resetTokenExpiry: expiry })
+      .where(eq(clientAccounts.id, id));
+  }
+
+  async clearResetToken(id: string): Promise<void> {
+    await db.update(clientAccounts)
+      .set({ resetToken: null, resetTokenExpiry: null })
+      .where(eq(clientAccounts.id, id));
+  }
+
   // Admin Accounts
   async getAdminAccounts(): Promise<Omit<AdminAccount, "senhaHash">[]> {
     const result = await db.select({
@@ -379,6 +443,24 @@ export class DatabaseStorage implements IStorage {
   async countAdminAccounts(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)` }).from(adminAccounts);
     return Number(result.count);
+  }
+
+  // Dashboard extra
+  async getDashboardExtra(): Promise<{ activityDays: { dia: string; total: number }[]; totalCaptures: number }> {
+    const rows = await db.execute(sql`
+      SELECT
+        to_char(capturado_em AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS dia,
+        count(*)::int AS total
+      FROM captures
+      WHERE capturado_em >= now() - interval '7 days'
+      GROUP BY dia
+      ORDER BY dia
+    `);
+    const [totalRow] = await db.select({ count: sql<number>`count(*)` }).from(captures);
+    return {
+      activityDays: rows.rows as { dia: string; total: number }[],
+      totalCaptures: Number(totalRow?.count) || 0,
+    };
   }
 
   // Stats

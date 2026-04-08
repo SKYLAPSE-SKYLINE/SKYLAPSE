@@ -1,0 +1,21 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K12:54:29 PM [express] serving on port 5000
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+12:54:32 PM [express] GET /api/admin/me 401 in 2ms :: {"message":"Não autenticado"}
+12:54:36 PM [express] GET /api/admin/me 401 in 0ms :: {"message":"Não autenticado"}
+12:54:44 PM [express] POST /api/admin/login 200 in 378ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:54:44 PM [express] GET /api/admin/me 200 in 5ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:54:45 PM [express] GET /api/admin/stats 200 in 21ms :: {"totalClients":2,"activeClients":2,"totalCameras":0,"onlineCameras":0,"offlineCameras":0,"todayCaptures":0,"processingTimelapses":0}
+12:54:45 PM [express] GET /api/admin/cameras/offline 200 in 18ms :: []
+12:54:45 PM [express] GET /api/admin/timelapses/recent 200 in 20ms :: []
+12:54:58 PM [express] GET /api/admin/me 304 in 18ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:54:58 PM [express] GET /api/admin/cameras 200 in 10ms :: []
+12:54:58 PM [express] GET /api/admin/locations 200 in 120ms :: [{"id":"f07c6884-6083-47b6-93f4-b9d27f2da920","nome":"Ranyere Dias","endereco":"dasasdadasd","cidade":"Anápolis","estado":"GO","descricao":"","clienteId":"7b31c67e-3624-4514-88bf-0fcfe1a75284","status":"ativo","createdAt":"2026-01-27T12:39:35.698Z","cliente":{"id":"7b31c67e-3624-4514-88bf-0fcfe1a75284","nome":"Ranyere Dias","email":"gabriel@skylineip.com.br","telefone":"62992294131","empresa":"Skyline Imagens e Produções Ltda","userId":null,"status":"ativo","createdAt":"2026-01-27T12:39:02.426Z"}},{"id":"5c449226-9e7e-4cc5-a2cc-1f354476b8bd","nome":"Escritório Principal Fd2B","endereco":"Av. Paulista, 1000","cidade":"São Paulo","estado":"SP","descricao":"Escritório principal localizado na Av. Paulista.","clienteId":"d78f12b9-88ce-4161-a6b8-5394a494c9d9","status":"ativo","createdAt":"2026-01-27T00:24:27.911Z","cliente":{"id":"d78f12b9-88ce-4161-a6b8-5394a494c9d9","nome":"Empresa Teste 6G5r","email":"empresa6G5r@teste.com","telefone":"(11) 99999-9999","empresa":"Empresa Teste LTDA","userId":null,"status":"ativo","createdAt":"2026-01-27T00:22:54.820Z"}}]
+12:55:40 PM [express] GET /api/admin/me 304 in 14ms :: {"id":"c0711605-b15e-4b78-b00a-a9b516a488dd","nome":"Administrador","email":"admin@skylapse.com"}
+12:55:40 PM [express] GET /api/admin/stats 304 in 7ms :: {"totalClients":2,"activeClients":2,"totalCameras":0,"onlineCameras":0,"offlineCameras":0,"todayCaptures":0,"processingTimelapses":0}
+12:55:40 PM [express] GET /api/admin/cameras/offline 304 in 2ms :: []
+12:55:40 PM [express] GET /api/admin/timelapses/recent 304 in 15ms :: []

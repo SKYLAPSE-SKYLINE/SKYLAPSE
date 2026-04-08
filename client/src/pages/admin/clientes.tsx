@@ -217,16 +217,10 @@ export default function ClientesPage() {
   ];
 
   return (
-    <AdminLayout
-      title="Clientes"
-      breadcrumbs={[
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Clientes" },
-      ]}
-    >
-      <div className="space-y-4">
+    <AdminLayout title="Clientes">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">
+          <p className="text-sm text-zinc-300">
             Gerencie os clientes da plataforma
           </p>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

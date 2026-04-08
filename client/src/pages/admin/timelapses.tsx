@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Plus, Video, Play, Download, Trash2, Film } from "lucide-react";
 import type { Camera, Timelapse, TimelapseWithCamera } from "@shared/schema";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 const timelapseFormSchema = z.object({
@@ -51,10 +51,16 @@ type TimelapseFormValues = z.infer<typeof timelapseFormSchema>;
 
 export default function TimelapsesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: timelapses, isLoading } = useQuery<TimelapseWithCamera[]>({
     queryKey: ["/api/admin/timelapses"],
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasProcessing = data?.some((t) => t.status === "na_fila" || t.status === "processando");
+      return hasProcessing ? 3000 : false;
+    },
   });
 
   const { data: cameras } = useQuery<Camera[]>({
@@ -182,12 +188,10 @@ export default function TimelapsesPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                asChild
+                onClick={() => setVideoUrl(timelapse.videoUrl)}
                 data-testid={`button-play-timelapse-${timelapse.id}`}
               >
-                <a href={timelapse.videoUrl} target="_blank" rel="noopener noreferrer">
-                  <Play className="h-4 w-4" />
-                </a>
+                <Play className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -220,17 +224,11 @@ export default function TimelapsesPage() {
   ];
 
   return (
-    <AdminLayout
-      title="Time-lapses"
-      breadcrumbs={[
-        { label: "Admin", href: "/admin/dashboard" },
-        { label: "Time-lapses" },
-      ]}
-    >
-      <div className="space-y-4">
+    <AdminLayout title="Time-lapses">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">
-            Gere e gerencie vídeos time-lapse das câmeras
+          <p className="text-sm text-zinc-300">
+            Gere e gerencie videos time-lapse
           </p>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -377,6 +375,32 @@ export default function TimelapsesPage() {
           getRowTestId={(timelapse) => `row-timelapse-${timelapse.id}`}
         />
       </div>
+
+      <Dialog open={!!videoUrl} onOpenChange={() => setVideoUrl(null)}>
+        <DialogContent className="max-w-4xl p-0">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle>Time-lapse</DialogTitle>
+          </DialogHeader>
+          <div className="bg-black">
+            {videoUrl && (
+              <video
+                src={videoUrl}
+                controls
+                autoPlay
+                className="w-full max-h-[70vh]"
+              />
+            )}
+          </div>
+          <div className="flex justify-center pb-4">
+            <Button variant="outline" size="sm" asChild>
+              <a href={videoUrl || ""} download>
+                <Download className="h-4 w-4 mr-1" />
+                Baixar vídeo
+              </a>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

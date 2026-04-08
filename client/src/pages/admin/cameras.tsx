@@ -5,8 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin-layout";
-import { DataTable } from "@/components/data-table";
-import { StatusBadge, StatusDot } from "@/components/status-badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +34,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -93,15 +93,80 @@ interface TestResult {
   imagem?: string;
 }
 
+function DeleteCameraDialog({
+  camera,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  camera: CameraWithLocation;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [typed, setTyped] = useState("");
+  const expected = `DELETE ${camera.nome}`;
+  const isValid = typed === expected;
+
+  return (
+    <Dialog open onOpenChange={onCancel}>
+      <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-500">
+            <Trash2 className="h-5 w-5" />
+            Remover câmera
+          </DialogTitle>
+          <DialogDescription className="pt-1">
+            Esta ação é <strong>irreversível</strong>. Os registros de capturas no banco de dados serão apagados. Os arquivos de imagem no disco permanecem em{" "}
+            <code className="bg-zinc-800 px-1 rounded text-xs">uploads/captures/{camera.id}/</code>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-zinc-400">
+            Para confirmar, digite exatamente:
+          </p>
+          <code className="block bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-red-400 font-mono select-all">
+            {expected}
+          </code>
+          <Input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={`Digite: ${expected}`}
+            className="font-mono text-sm"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter" && isValid) onConfirm(); }}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onCancel} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={!isValid || isPending}
+          >
+            {isPending ? "Removendo..." : "Remover câmera"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function CamerasPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<CameraType | null>(null);
+  const [cameraToDelete, setCameraToDelete] = useState<CameraWithLocation | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
 
   const { data: cameras, isLoading } = useQuery<CameraWithLocation[]>({
     queryKey: ["/api/admin/cameras"],
+    refetchInterval: 60_000,
   });
 
   const { data: locations } = useQuery<Location[]>({
@@ -156,6 +221,7 @@ export default function CamerasPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/cameras"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       toast({ title: "Câmera removida com sucesso!" });
+      setCameraToDelete(null);
     },
     onError: () => toast({ title: "Erro ao remover câmera", variant: "destructive" }),
   });
@@ -228,106 +294,22 @@ export default function CamerasPage() {
     }
   };
 
-  const columns = [
-    {
-      key: "nome",
-      header: "Câmera",
-      cell: (camera: CameraWithLocation) => (
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10">
-              <Camera className="h-5 w-5 text-primary" />
-            </div>
-            <StatusDot 
-              status={camera.status as "online" | "offline"} 
-              className="absolute -bottom-0.5 -right-0.5 ring-2 ring-background"
-            />
-          </div>
-          <div>
-            <p className="font-medium">{camera.nome}</p>
-            <p className="text-xs text-muted-foreground">
-              {camera.localidade?.nome || "Sem localidade"}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "marca",
-      header: "Marca / Modo",
-      cell: (camera: CameraWithLocation) => (
-        <div className="flex flex-col gap-0.5">
-          <span className="capitalize">{camera.marca}</span>
-          {(camera as any).streamUrl && (
-            <span className="text-xs text-primary flex items-center gap-1">
-              <Wifi className="h-3 w-3" /> go2rtc
-            </span>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      cell: (camera: CameraWithLocation) => (
-        <StatusBadge status={camera.status as "online" | "offline"} />
-      ),
-    },
-    {
-      key: "ultimaCaptura",
-      header: "Última Captura",
-      cell: (camera: CameraWithLocation) =>
-        camera.ultimaCaptura
-          ? formatDistanceToNow(new Date(camera.ultimaCaptura), { addSuffix: true, locale: ptBR })
-          : "Sem capturas",
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "w-36",
-      cell: (camera: CameraWithLocation) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" asChild data-testid={`button-view-camera-${camera.id}`}>
-            <Link href={`/admin/cameras/${camera.id}/live`}><Eye className="h-4 w-4" /></Link>
-          </Button>
-          <Button variant="ghost" size="icon" asChild data-testid={`button-gallery-camera-${camera.id}`}>
-            <Link href={`/admin/cameras/${camera.id}/galeria`}><Image className="h-4 w-4" /></Link>
-          </Button>
-          <Button
-            variant="ghost" size="icon"
-            onClick={(e) => { e.stopPropagation(); handleOpenDialog(camera); }}
-            data-testid={`button-edit-camera-${camera.id}`}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost" size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm("Tem certeza que deseja remover esta câmera?")) deleteMutation.mutate(camera.id);
-            }}
-            data-testid={`button-delete-camera-${camera.id}`}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      ),
-    },
-  ];
-
   return (
-    <AdminLayout
-      title="Câmeras"
-      breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Câmeras" }]}
-    >
-      <div className="space-y-4">
+    <AdminLayout title="Cameras">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">Gerencie as câmeras de monitoramento</p>
+          <div>
+            <p className="text-sm text-zinc-300">{cameras?.length || 0} camera{(cameras?.length || 0) !== 1 ? "s" : ""} cadastrada{(cameras?.length || 0) !== 1 ? "s" : ""}</p>
+          </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()} data-testid="button-add-camera">
-                <Plus className="mr-2 h-4 w-4" />Nova Câmera
-              </Button>
+              <button
+                onClick={() => handleOpenDialog()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+                data-testid="button-add-camera"
+              >
+                <Plus className="h-4 w-4" />Nova Camera
+              </button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
               <DialogHeader>
@@ -590,14 +572,122 @@ export default function CamerasPage() {
           </Dialog>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={cameras || []}
-          isLoading={isLoading}
-          emptyMessage="Nenhuma câmera cadastrada"
-          getRowTestId={(camera) => `row-camera-${camera.id}`}
-        />
+        {isLoading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800/50">
+                <Skeleton className="aspect-[16/10] w-full bg-zinc-800" />
+                <div className="p-4 space-y-2">
+                  <Skeleton className="h-4 w-2/3 bg-zinc-800" />
+                  <Skeleton className="h-3 w-1/3 bg-zinc-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : !cameras || cameras.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 rounded-full bg-zinc-800/60 flex items-center justify-center mb-4">
+              <Camera className="h-7 w-7 text-zinc-300" />
+            </div>
+            <p className="text-white font-medium">Nenhuma camera cadastrada</p>
+            <p className="text-sm text-zinc-300 mt-1">Adicione sua primeira camera</p>
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {cameras.map((cam) => (
+              <div
+                key={cam.id}
+                className="group relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800/50"
+                data-testid={`row-camera-${cam.id}`}
+              >
+                {/* Thumbnail */}
+                <div className="relative aspect-[16/10] bg-zinc-800 overflow-hidden">
+                  <img
+                    src={`/api/admin/cameras/${cam.id}/thumbnail`}
+                    alt={cam.nome}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <Camera className="h-8 w-8 text-zinc-300 absolute inset-0 m-auto" />
+
+                  {/* Status dot */}
+                  <div className="absolute top-3 left-3">
+                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-black/40 ${
+                      cam.status === "online"
+                        ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                        : "bg-zinc-500"
+                    }`} />
+                  </div>
+
+                  {/* Hover actions */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4 gap-2">
+                    <Link
+                      href={`/admin/cameras/${cam.id}/live`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white text-xs font-medium hover:bg-white/35 transition-colors shadow-sm"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Ao Vivo
+                    </Link>
+                    <Link
+                      href={`/admin/cameras/${cam.id}/galeria`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white text-xs font-medium hover:bg-white/35 transition-colors shadow-sm"
+                    >
+                      <Image className="h-3.5 w-3.5" /> Galeria
+                    </Link>
+                    <button
+                      onClick={() => handleOpenDialog(cam)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white text-xs hover:bg-white/35 transition-colors shadow-sm"
+                      data-testid={`button-edit-camera-${cam.id}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setCameraToDelete(cam)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/20 backdrop-blur-sm text-red-200 text-xs hover:bg-red-500/40 transition-colors shadow-sm"
+                      data-testid={`button-delete-camera-${cam.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-medium text-white truncate">{cam.nome}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-zinc-300 truncate">{cam.localidade?.nome || "Sem localidade"}</span>
+                      <span className="text-xs text-zinc-300">·</span>
+                      <span className="text-xs text-zinc-300 capitalize">{cam.marca}</span>
+                      {(cam as any).streamUrl && (
+                        <span className="text-[10px] text-blue-400 flex items-center gap-0.5">
+                          <Wifi className="h-2.5 w-2.5" /> go2rtc
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-zinc-300">
+                      {cam.ultimaCaptura
+                        ? formatDistanceToNow(new Date(cam.ultimaCaptura), { addSuffix: true, locale: ptBR })
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {cameraToDelete && (
+        <DeleteCameraDialog
+          camera={cameraToDelete}
+          onConfirm={() => deleteMutation.mutate(cameraToDelete.id)}
+          onCancel={() => setCameraToDelete(null)}
+          isPending={deleteMutation.isPending}
+        />
+      )}
     </AdminLayout>
   );
 }
