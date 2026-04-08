@@ -1,0 +1,27 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - paragraph [ref=e10]: Monitoramento
+        - heading "SkyLapse" [level=1] [ref=e11]
+      - paragraph [ref=e12]: Acompanhe a evolucao da sua obra com capturas automaticas e timelapses em alta resolucao.
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - paragraph [ref=e15]: 4K
+          - paragraph [ref=e16]: Resolucao
+        - generic [ref=e18]:
+          - paragraph [ref=e19]: 24/7
+          - paragraph [ref=e20]: Monitoramento
+        - generic [ref=e22]:
+          - paragraph [ref=e23]: Auto
+          - paragraph [ref=e24]: Timelapse
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - heading "Esqueci minha senha" [level=2] [ref=e57]
+        - paragraph [ref=e58]: Informe seu e-mail para receber o link de redefinição.
+      - generic [ref=e59]:
+        - textbox "E-mail cadastrado" [ref=e61]
+        - button "Enviar link" [ref=e62] [cursor=pointer]
+      - button "Voltar ao login" [ref=e63] [cursor=pointer]

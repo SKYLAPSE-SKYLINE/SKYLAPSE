@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list [ref=e46]:
+      - status [ref=e47]:
+        - generic [ref=e49]: E-mail ou senha incorretos
+        - button [ref=e50] [cursor=pointer]:
+          - img [ref=e51]
+  - generic [ref=e3]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - paragraph [ref=e10]: Monitoramento
+        - heading "SkyLapse" [level=1] [ref=e11]
+      - paragraph [ref=e12]: Acompanhe a evolucao da sua obra com capturas automaticas e timelapses em alta resolucao.
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - paragraph [ref=e15]: 4K
+          - paragraph [ref=e16]: Resolucao
+        - generic [ref=e18]:
+          - paragraph [ref=e19]: 24/7
+          - paragraph [ref=e20]: Monitoramento
+        - generic [ref=e22]:
+          - paragraph [ref=e23]: Auto
+          - paragraph [ref=e24]: Timelapse
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - heading "Acessar portal" [level=2] [ref=e28]
+        - paragraph [ref=e29]: Entre com suas credenciais para continuar
+      - generic [ref=e30]:
+        - textbox "E-mail" [ref=e32]: admin@skylapse.com
+        - generic [ref=e34]:
+          - textbox "Senha" [ref=e35]: admin123
+          - button [ref=e36] [cursor=pointer]:
+            - img [ref=e37]
+        - button "Esqueci minha senha" [ref=e41] [cursor=pointer]
+        - button "Entrar" [ref=e42] [cursor=pointer]:
+          - generic [ref=e43]:
+            - text: Entrar
+            - img
+      - paragraph [ref=e44]: Problemas para acessar? Entre em contato com o suporte.
