@@ -1,0 +1,32 @@
+[      31ms] [ERROR] Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=L...mily=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap' violates the following Content Security Policy directive: "style-src 'self' 'unsafe-inline'". Note that 'style-src-elem' was not explicitly set, so 'style-src' is used as a fallback. The action has been blocked. @ http://host.docker.internal:3000/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/live:41
+[     285ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[     308ms] [ERROR] Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/snapshot?t=0:0
+[    6896ms] [ERROR] Warning: A future version of React will block javascript: URLs as a security precaution. Use event handlers instead if you can. If you need to generate unsafe HTML try using dangerouslySetInnerHTML instead. React was passed %s.%s "javascript:alert(document.domain)//stream.html?src=camera1&mode=mse" 
+    at iframe
+    at div
+    at div
+    at div
+    at div
+    at main
+    at div
+    at div
+    at AdminLayout (http://host.docker.internal:3000/src/components/admin-layout.tsx:21:31)
+    at CameraLivePage (http://host.docker.internal:3000/src/pages/admin/camera-live.tsx:28:18)
+    at AdminProtectedRoute (http://host.docker.internal:3000/src/App.tsx:66:32)
+    at Route (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/wouter.js?v=595b4069:322:16)
+    at Switch (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/wouter.js?v=595b4069:378:17)
+    at AppRouter (http://host.docker.internal:3000/src/App.tsx:95:25)
+    at Provider (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/chunk-6BRII5CC.js?v=595b4069:37:15)
+    at TooltipProvider (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=595b4069:63:5)
+    at ThemeProvider (http://host.docker.internal:3000/src/components/theme-provider.tsx:25:3)
+    at QueryClientProvider (http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/@tanstack_react-query.js?v=595b4069:2747:3)
+    at App @ http://host.docker.internal:3000/@fs/Users/gustavohenrique/Desktop/SkyLapse/node_modules/.vite/deps/chunk-LPF6KSF2.js?v=595b4069:520
+[   30323ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[   60333ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[   90349ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  120358ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  150374ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  180384ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  210441ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  240453ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0
+[  270485ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://host.docker.internal:3000/api/admin/cameras/a9b6879b-06ec-488c-8f8c-e589e6cb21e4/last-capture:0

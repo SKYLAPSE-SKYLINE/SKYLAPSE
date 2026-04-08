@@ -1,0 +1,120 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - link "SkyLapse" [ref=e6] [cursor=pointer]:
+        - /url: /admin/dashboard
+        - img [ref=e8]
+        - generic [ref=e11]: SkyLapse
+      - navigation [ref=e12]:
+        - link "Dashboard" [ref=e13] [cursor=pointer]:
+          - /url: /admin/dashboard
+          - img [ref=e14]
+          - generic [ref=e19]: Dashboard
+        - link "Cameras" [ref=e20] [cursor=pointer]:
+          - /url: /admin/cameras
+          - img [ref=e21]
+          - generic [ref=e24]: Cameras
+        - link "Time-lapses" [ref=e25] [cursor=pointer]:
+          - /url: /admin/timelapses
+          - img [ref=e26]
+          - generic [ref=e29]: Time-lapses
+        - link "Clientes" [ref=e30] [cursor=pointer]:
+          - /url: /admin/clientes
+          - img [ref=e31]
+          - generic [ref=e36]: Clientes
+        - link "Contas" [ref=e37] [cursor=pointer]:
+          - /url: /admin/contas
+          - img [ref=e38]
+          - generic [ref=e50]: Contas
+        - link "Localidades" [ref=e51] [cursor=pointer]:
+          - /url: /admin/localidades
+          - img [ref=e52]
+          - generic [ref=e55]: Localidades
+      - generic [ref=e56]:
+        - link "Configuracoes" [ref=e57] [cursor=pointer]:
+          - /url: /admin/configuracoes
+          - img [ref=e58]
+          - generic [ref=e61]: Configuracoes
+        - generic [ref=e62]:
+          - generic [ref=e63]: A
+          - generic [ref=e64]:
+            - paragraph [ref=e65]: Administrador
+            - paragraph [ref=e66]: admin@skylapse.com
+          - button "Sair" [ref=e67] [cursor=pointer]:
+            - img [ref=e68]
+    - generic [ref=e71]:
+      - banner [ref=e72]:
+        - button [ref=e73] [cursor=pointer]:
+          - img [ref=e74]
+        - heading "Configuracoes" [level=1] [ref=e75]
+      - main [ref=e76]:
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - heading "Configurações" [level=1] [ref=e79]
+            - paragraph [ref=e80]: Gerencie as contas de acesso ao painel administrativo.
+          - generic [ref=e81]:
+            - generic [ref=e82]:
+              - generic [ref=e83]:
+                - img [ref=e84]
+                - text: Sistema
+              - generic [ref=e87]: Links e status das câmeras e do portal
+            - generic [ref=e88]:
+              - generic [ref=e89]:
+                - paragraph [ref=e90]: Portal do Cliente
+                - generic [ref=e91]:
+                  - img [ref=e92]
+                  - generic [ref=e95]: https://piratic-cory-internally.ngrok-free.dev
+                  - button "Copiar" [ref=e96] [cursor=pointer]:
+                    - img [ref=e97]
+                  - link [ref=e100] [cursor=pointer]:
+                    - /url: https://piratic-cory-internally.ngrok-free.dev
+                    - img [ref=e101]
+              - generic [ref=e105]:
+                - paragraph [ref=e106]: Câmeras
+                - generic [ref=e107]:
+                  - generic [ref=e108]:
+                    - generic [ref=e109]:
+                      - generic [ref=e111]: XSS-TEST-CAM-1
+                      - generic [ref=e112]: Offline
+                    - generic [ref=e113]:
+                      - img [ref=e114]
+                      - generic [ref=e118]: javascript:alert(document.domain)//
+                      - button "Copiar" [ref=e119] [cursor=pointer]:
+                        - img [ref=e120]
+                      - link [ref=e123] [cursor=pointer]:
+                        - /url: javascript:alert(document.domain)///
+                        - img [ref=e124]
+                  - generic [ref=e128]:
+                    - generic [ref=e129]:
+                      - generic [ref=e131]: Camera Principal
+                      - generic [ref=e132]: Offline
+                    - generic [ref=e133]:
+                      - img [ref=e134]
+                      - generic [ref=e138]: https://skyline-timelapse.taild2c22c.ts.net
+                      - button "Copiar" [ref=e139] [cursor=pointer]:
+                        - img [ref=e140]
+                      - link [ref=e143] [cursor=pointer]:
+                        - /url: https://skyline-timelapse.taild2c22c.ts.net/
+                        - img [ref=e144]
+                    - paragraph [ref=e148]: "Última captura: há cerca de 20 horas"
+          - generic [ref=e149]:
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - img [ref=e154]
+                  - text: Contas administrativas
+                - generic [ref=e157]: Usuários com acesso total ao painel de controle
+              - button "Nova conta" [ref=e158] [cursor=pointer]:
+                - img
+                - text: Nova conta
+            - generic [ref=e161]:
+              - generic [ref=e162]:
+                - generic [ref=e163]:
+                  - paragraph [ref=e164]: Administrador
+                  - generic [ref=e165]: Você
+                - paragraph [ref=e166]: admin@skylapse.com
+              - button "Alterar senha" [ref=e168] [cursor=pointer]:
+                - img
+                - text: Alterar senha
