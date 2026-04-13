@@ -1,22 +1,13 @@
-import fs from "fs";
-import path from "path";
 import { storage } from "./storage";
-import { fetchSnapshot } from "./camera-service";
+import { fetchSnapshot, isSafeTarget } from "./camera-service";
 import { log } from "./index";
 import { sendCameraOfflineEmail } from "./email-service";
+import { uploadToR2 } from "./r2";
 
-const CAPTURES_DIR = path.resolve("uploads/captures");
 const MAX_FAILURES_BEFORE_OFFLINE = 3;
 
 // Track consecutive failures per camera
 const failureCounts = new Map<string, number>();
-
-function ensureCapturesDir() {
-  if (!fs.existsSync(CAPTURES_DIR)) {
-    fs.mkdirSync(CAPTURES_DIR, { recursive: true });
-    log("Diretório de capturas criado: " + CAPTURES_DIR, "capture-job");
-  }
-}
 
 async function captureCamera(camera: {
   id: string;
@@ -29,6 +20,16 @@ async function captureCamera(camera: {
   senha: string | null;
   marca: string | null;
 }): Promise<boolean> {
+  // Reject cameras with unsafe targets — prevents stored SSRF via automated job
+  if (camera.streamUrl && !isSafeTarget(camera.streamUrl)) {
+    log(`[${camera.nome}] Blocked: streamUrl failed SSRF check`, "capture-job");
+    return false;
+  }
+  if (camera.hostname && !isSafeTarget(camera.hostname)) {
+    log(`[${camera.nome}] Blocked: hostname failed SSRF check`, "capture-job");
+    return false;
+  }
+
   const result = await fetchSnapshot({
     streamUrl: camera.streamUrl,
     hostname: camera.hostname,
@@ -48,27 +49,21 @@ async function captureCamera(camera: {
   const timestamp = now.toISOString().replace(/[:.]/g, "-"); // 2026-03-31T14-30-00-000Z
   const filename = `${camera.id}_${timestamp}.jpg`;
 
-  const dir = path.join(CAPTURES_DIR, camera.id, dateFolder);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  const r2Key = `captures/${camera.id}/${dateFolder}/${filename}`;
 
-  const filePath = path.join(dir, filename);
-  fs.writeFileSync(filePath, result.imageBuffer);
-
-  const imagemUrl = `/api/captures/${camera.id}/${dateFolder}/${filename}`;
+  await uploadToR2(r2Key, result.imageBuffer, "image/jpeg");
 
   await storage.createCapture({
     cameraId: camera.id,
-    imagemUrl,
-    imagemPath: filePath,
+    imagemUrl: r2Key,
+    imagemPath: r2Key,
     tamanhoBytes: result.imageBuffer.length,
   });
 
   await storage.updateCamera(camera.id, { ultimaCaptura: now } as any);
 
   log(
-    `[${camera.nome}] Captura salva: ${(result.imageBuffer.length / 1024).toFixed(1)}KB`,
+    `[${camera.nome}] Captura salva no R2: ${(result.imageBuffer.length / 1024).toFixed(1)}KB`,
     "capture-job",
   );
 
@@ -135,8 +130,7 @@ async function runCaptureRound() {
 }
 
 export function startCaptureJob() {
-  ensureCapturesDir();
-  log("Job de captura iniciado (verifica a cada 60s, offline após 3 falhas)", "capture-job");
+  log("Job de captura iniciado (R2 storage, verifica a cada 60s, offline após 3 falhas)", "capture-job");
 
   // Primeira execução após 10s (dar tempo do servidor subir)
   setTimeout(() => {

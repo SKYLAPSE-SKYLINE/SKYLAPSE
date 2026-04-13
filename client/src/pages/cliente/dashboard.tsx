@@ -40,8 +40,9 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
   const [mode, setMode] = useState<"snapshot" | "stream">("snapshot");
   const [streamActive, setStreamActive] = useState(false);
   const snapshotUrl = camera ? `/api/client/cameras/${camera.id}/snapshot?t=${Date.now()}` : "";
-  const liveStreamUrl = camera?.streamUrl
-    ? `${camera.streamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
+  const safeStreamUrl = camera?.streamUrl && /^https?:\/\//i.test(camera.streamUrl) ? camera.streamUrl : null;
+  const liveStreamUrl = safeStreamUrl
+    ? `${safeStreamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
     : null;
 
   const handleClose = () => {

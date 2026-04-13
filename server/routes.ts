@@ -18,6 +18,9 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import archiver from "archiver";
 import crypto from "crypto";
+import { db } from "./db";
+import { captures, timelapses } from "@shared/schema";
+import { sql } from "drizzle-orm";
 import { audit } from "./audit";
 
 declare global {
@@ -32,7 +35,7 @@ declare global {
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 const ADMIN_JWT_SECRET = process.env.SESSION_SECRET! + "_admin";
 
-// Rate limiting for login endpoints
+// Rate limiting for login endpoints (keyed by IP)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
@@ -49,8 +52,22 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-function resetRateLimit(ip: string) {
-  loginAttempts.delete(ip);
+// Rate limiting for change-password (keyed by accountId — independent of login rate limit
+// so it cannot be bypassed by making a successful login to reset the IP counter)
+const changePasswordAttempts = new Map<string, { count: number; resetAt: number }>();
+const CHANGE_PASSWORD_MAX = 5;
+const CHANGE_PASSWORD_WINDOW = 15 * 60 * 1000; // 15 minutes
+
+function checkChangePasswordRateLimit(accountId: string): boolean {
+  const now = Date.now();
+  const entry = changePasswordAttempts.get(accountId);
+  if (!entry || now > entry.resetAt) {
+    changePasswordAttempts.set(accountId, { count: 1, resetAt: now + CHANGE_PASSWORD_WINDOW });
+    return true;
+  }
+  if (entry.count >= CHANGE_PASSWORD_MAX) return false;
+  entry.count++;
+  return true;
 }
 
 // Cleanup expired entries every 30 minutes
@@ -58,6 +75,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of loginAttempts) {
     if (now > entry.resetAt) loginAttempts.delete(ip);
+  }
+  for (const [id, entry] of changePasswordAttempts) {
+    if (now > entry.resetAt) changePasswordAttempts.delete(id);
   }
 }, 30 * 60 * 1000);
 
@@ -67,12 +87,16 @@ export const isAdminAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(401).json({ message: "Não autenticado" });
   }
   try {
-    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminAccountId: string };
-    // Check account still exists in DB — allows immediate revocation when account is deleted
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminAccountId: string; tv?: number };
     const account = await storage.getAdminAccount(payload.adminAccountId);
     if (!account) {
       res.clearCookie("skylapse-admin-token");
       return res.status(401).json({ message: "Conta não encontrada ou removida" });
+    }
+    // Reject tokens issued before the last logout or password change
+    if ((payload.tv ?? 0) !== (account.tokenVersion ?? 0)) {
+      res.clearCookie("skylapse-admin-token");
+      return res.status(401).json({ message: "Sessão inválida. Faça login novamente." });
     }
     req.adminAccountId = payload.adminAccountId;
     next();
@@ -87,12 +111,16 @@ export const isClientAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(401).json({ message: "Não autenticado" });
   }
   try {
-    const payload = jwt.verify(token, CLIENT_JWT_SECRET) as { clientAccountId: string };
-    // Check account still exists and is active on every request — revokes deactivated sessions immediately
-    const account = await storage.getClientAccountStatus(payload.clientAccountId);
+    const payload = jwt.verify(token, CLIENT_JWT_SECRET) as { clientAccountId: string; tv?: number };
+    const account = await storage.getClientAccount(payload.clientAccountId);
     if (!account || account.status !== "ativo") {
       res.clearCookie("skylapse-client-token");
       return res.status(401).json({ message: "Conta inativa ou não encontrada" });
+    }
+    // Reject tokens issued before the last logout or password change
+    if ((payload.tv ?? 0) !== (account.tokenVersion ?? 0)) {
+      res.clearCookie("skylapse-client-token");
+      return res.status(401).json({ message: "Sessão inválida. Faça login novamente." });
     }
     req.clientAccountId = payload.clientAccountId;
     next();
@@ -108,9 +136,9 @@ const isAnyAuthenticated: RequestHandler = async (req, res, next) => {
 
   if (adminToken) {
     try {
-      const payload = jwt.verify(adminToken, ADMIN_JWT_SECRET) as { adminAccountId: string };
+      const payload = jwt.verify(adminToken, ADMIN_JWT_SECRET) as { adminAccountId: string; tv?: number };
       const account = await storage.getAdminAccount(payload.adminAccountId);
-      if (account) {
+      if (account && (payload.tv ?? 0) === (account.tokenVersion ?? 0)) {
         req.adminAccountId = payload.adminAccountId;
         return next();
       }
@@ -119,9 +147,9 @@ const isAnyAuthenticated: RequestHandler = async (req, res, next) => {
 
   if (clientToken) {
     try {
-      const payload = jwt.verify(clientToken, CLIENT_JWT_SECRET) as { clientAccountId: string };
-      const account = await storage.getClientAccountStatus(payload.clientAccountId);
-      if (account && account.status === "ativo") {
+      const payload = jwt.verify(clientToken, CLIENT_JWT_SECRET) as { clientAccountId: string; tv?: number };
+      const account = await storage.getClientAccount(payload.clientAccountId);
+      if (account && account.status === "ativo" && (payload.tv ?? 0) === (account.tokenVersion ?? 0)) {
         req.clientAccountId = payload.clientAccountId;
         return next();
       }
@@ -159,29 +187,45 @@ export async function registerRoutes(
     return !isNaN(d.getTime());
   }
 
-  // Serve captured images and generated videos (auth required)
-  app.use("/api/captures", isAnyAuthenticated, express.static(path.resolve("uploads/captures")));
-  app.use("/api/videos", isAnyAuthenticated, express.static(path.resolve("uploads/videos")));
+  // Serve captured images from R2 (auth required)
+  app.get("/api/captures/:cameraId/:date/:filename", isAnyAuthenticated, async (req, res) => {
+    try {
+      const { getStreamFromR2 } = await import("./r2");
+      const r2Key = `captures/${req.params.cameraId}/${req.params.date}/${req.params.filename}`;
+      const { stream, contentType } = await getStreamFromR2(r2Key);
+      res.set("Content-Type", contentType || "image/jpeg");
+      res.set("Cache-Control", "public, max-age=3600");
+      stream.pipe(res);
+    } catch {
+      res.status(404).json({ message: "Arquivo não encontrado" });
+    }
+  });
+
+  // Serve videos from R2 (auth required)
+  app.get("/api/videos/:filename", isAnyAuthenticated, async (req, res) => {
+    try {
+      const { getStreamFromR2 } = await import("./r2");
+      const r2Key = `videos/${req.params.filename}`;
+      const { stream, contentType } = await getStreamFromR2(r2Key);
+      res.set("Content-Type", contentType || "video/mp4");
+      res.set("Cache-Control", "public, max-age=3600");
+      stream.pipe(res);
+    } catch {
+      res.status(404).json({ message: "Arquivo não encontrado" });
+    }
+  });
 
   // Dashboard extended — activity chart + storage size
   app.get("/api/admin/dashboard-extra", isAdminAuthenticated, async (req, res) => {
     try {
       const extra = await storage.getDashboardExtra();
 
+      // Calculate storage from database (sum of capture + timelapse sizes)
       let storageBytes = 0;
       try {
-        const fs = await import("fs");
-        function getDirSize(dir: string): number {
-          if (!fs.existsSync(dir)) return 0;
-          let total = 0;
-          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const full = `${dir}/${entry.name}`;
-            if (entry.isDirectory()) total += getDirSize(full);
-            else if (entry.isFile()) try { total += fs.statSync(full).size; } catch { /* skip */ }
-          }
-          return total;
-        }
-        storageBytes = getDirSize(path.resolve("uploads/captures"));
+        const [captureSize] = await db.select({ total: sql<number>`coalesce(sum(tamanho_bytes), 0)` }).from(captures);
+        const [videoSize] = await db.select({ total: sql<number>`coalesce(sum(tamanho_bytes), 0)` }).from(timelapses);
+        storageBytes = Number(captureSize?.total || 0) + Number(videoSize?.total || 0);
       } catch { /* ignore */ }
 
       res.json({ ...extra, storageBytes });
@@ -449,14 +493,16 @@ export async function registerRoutes(
       const archive = archiver("zip", { zlib: { level: 1 } });
       archive.pipe(res);
 
+      const { getFromR2 } = await import("./r2");
       for (const capture of captures) {
         if (capture.imagemPath) {
-          const filePath = path.resolve(capture.imagemPath);
-          if (!isPathSafe(filePath)) continue;
-          const fileName = capture.capturadoEm
-            ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
-            : path.basename(filePath);
-          archive.file(filePath, { name: fileName });
+          try {
+            const buffer = await getFromR2(capture.imagemPath);
+            const fileName = capture.capturadoEm
+              ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
+              : capture.imagemPath.split("/").pop() || "capture.jpg";
+            archive.append(buffer, { name: fileName });
+          } catch { /* skip missing files */ }
         }
       }
 
@@ -475,12 +521,12 @@ export async function registerRoutes(
       if (!capture) {
         return res.status(404).json({ message: "Captura não encontrada" });
       }
-      // Deletar arquivo do disco
-      if (capture.imagemPath && isPathSafe(capture.imagemPath)) {
-        const fs = await import("fs");
-        if (fs.existsSync(capture.imagemPath)) {
-          fs.unlinkSync(capture.imagemPath);
-        }
+      // Deletar arquivo do R2
+      if (capture.imagemPath) {
+        try {
+          const { deleteFromR2 } = await import("./r2");
+          await deleteFromR2(capture.imagemPath);
+        } catch { /* ignore — file may not exist */ }
       }
       res.status(204).send();
     } catch (error) {
@@ -492,6 +538,14 @@ export async function registerRoutes(
   app.post("/api/admin/cameras", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertCameraSchema.parse(req.body);
+
+      if (data.hostname && !isSafeTarget(data.hostname)) {
+        return res.status(400).json({ message: "Hostname não permitido" });
+      }
+      if (data.streamUrl && !isSafeTarget(data.streamUrl)) {
+        return res.status(400).json({ message: "URL de stream não permitida" });
+      }
+
       const camera = await storage.createCamera(data);
       audit("camera.created", { adminId: req.adminAccountId, cameraId: camera.id, nome: camera.nome });
       res.status(201).json(stripCameraCredentials(camera));
@@ -549,19 +603,12 @@ export async function registerRoutes(
     }
   });
 
-  // Fast thumbnail from last saved capture (serves file from disk)
+  // Fast thumbnail from last saved capture (serves from R2)
   app.get("/api/admin/cameras/:id/thumbnail", isAdminAuthenticated, async (req, res) => {
     try {
       const capture = await storage.getLastCapture(req.params.id);
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
-      }
-      if (!isPathSafe(capture.imagemPath)) {
-        return res.status(403).json({ message: "Acesso negado" });
-      }
-      const fs = await import("fs");
-      if (!fs.existsSync(capture.imagemPath)) {
-        return res.status(404).json({ message: "Arquivo não encontrado" });
       }
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "public, max-age=300");
@@ -569,7 +616,9 @@ export async function registerRoutes(
       if (req.headers["if-none-match"] === `"${capture.id}"`) {
         return res.status(304).end();
       }
-      fs.createReadStream(capture.imagemPath).pipe(res);
+      const { getStreamFromR2 } = await import("./r2");
+      const { stream } = await getStreamFromR2(capture.imagemPath);
+      stream.pipe(res);
     } catch (error) {
       console.error("Error serving thumbnail:", error);
       res.status(500).json({ message: "Erro ao servir thumbnail" });
@@ -582,6 +631,13 @@ export async function registerRoutes(
       const camera = await storage.getCamera(req.params.id);
       if (!camera) {
         return res.status(404).json({ message: "Camera not found" });
+      }
+
+      if (camera.streamUrl && !isSafeTarget(camera.streamUrl)) {
+        return res.status(400).json({ message: "URL de stream não permitida" });
+      }
+      if (camera.hostname && !isSafeTarget(camera.hostname)) {
+        return res.status(400).json({ message: "Hostname não permitido" });
       }
 
       const result = await fetchSnapshot({
@@ -611,6 +667,14 @@ export async function registerRoutes(
   app.put("/api/admin/cameras/:id", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertCameraSchema.partial().parse(req.body);
+
+      if (data.hostname && !isSafeTarget(data.hostname)) {
+        return res.status(400).json({ message: "Hostname não permitido" });
+      }
+      if (data.streamUrl && !isSafeTarget(data.streamUrl)) {
+        return res.status(400).json({ message: "URL de stream não permitida" });
+      }
+
       const camera = await storage.updateCamera(req.params.id, data);
       if (!camera) {
         return res.status(404).json({ message: "Camera not found" });
@@ -697,12 +761,12 @@ export async function registerRoutes(
       if (!timelapse) {
         return res.status(404).json({ message: "Timelapse not found" });
       }
-      // Deletar arquivo de vídeo do disco
-      if (timelapse.videoPath && isPathSafe(timelapse.videoPath)) {
-        const fs = await import("fs");
-        if (fs.existsSync(timelapse.videoPath)) {
-          fs.unlinkSync(timelapse.videoPath);
-        }
+      // Deletar arquivo de vídeo do R2
+      if (timelapse.videoPath) {
+        try {
+          const { deleteFromR2 } = await import("./r2");
+          await deleteFromR2(timelapse.videoPath);
+        } catch { /* ignore */ }
       }
       res.status(204).send();
     } catch (error) {
@@ -865,7 +929,7 @@ export async function registerRoutes(
       }
       if (account.status !== "ativo") {
         audit("client.login.failure", { email, ip, reason: "account_inactive" });
-        return res.status(403).json({ message: "Conta desativada. Entre em contato com o suporte." });
+        return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
@@ -873,10 +937,9 @@ export async function registerRoutes(
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       audit("client.login.success", { accountId: account.id, email, ip });
-      resetRateLimit(ip);
       const cameraIds = await storage.getClientCameraIds(account.id);
       const token = jwt.sign(
-        { clientAccountId: account.id },
+        { clientAccountId: account.id, tv: account.tokenVersion ?? 0 },
         CLIENT_JWT_SECRET,
         { expiresIn: "24h" }
       );
@@ -926,9 +989,8 @@ export async function registerRoutes(
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       audit("admin.login.success", { accountId: account.id, email, ip });
-      resetRateLimit(ip);
       const token = jwt.sign(
-        { adminAccountId: account.id },
+        { adminAccountId: account.id, tv: account.tokenVersion ?? 0 },
         ADMIN_JWT_SECRET,
         { expiresIn: "24h" }
       );
@@ -945,7 +1007,8 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/logout", (req, res) => {
+  app.post("/api/admin/logout", isAdminAuthenticated, async (req, res) => {
+    await storage.incrementAdminTokenVersion(req.adminAccountId!);
     audit("admin.logout", { adminAccountId: req.adminAccountId });
     res.clearCookie("skylapse-admin-token");
     res.json({ message: "Logout realizado" });
@@ -1120,14 +1183,16 @@ export async function registerRoutes(
       const archive = archiver("zip", { zlib: { level: 1 } });
       archive.pipe(res);
 
+      const { getFromR2: getFromR2Client } = await import("./r2");
       for (const capture of captures) {
         if (capture.imagemPath) {
-          const filePath = path.resolve(capture.imagemPath);
-          if (!isPathSafe(filePath)) continue;
-          const fileName = capture.capturadoEm
-            ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
-            : path.basename(filePath);
-          archive.file(filePath, { name: fileName });
+          try {
+            const buffer = await getFromR2Client(capture.imagemPath);
+            const fileName = capture.capturadoEm
+              ? `${new Date(capture.capturadoEm).toISOString().replace(/[T:]/g, "-").slice(0, 19)}.jpg`
+              : capture.imagemPath.split("/").pop() || "capture.jpg";
+            archive.append(buffer, { name: fileName });
+          } catch { /* skip missing files */ }
         }
       }
 
@@ -1150,20 +1215,15 @@ export async function registerRoutes(
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
       }
-      if (!isPathSafe(capture.imagemPath)) {
-        return res.status(403).json({ message: "Acesso negado" });
-      }
-      const fs = await import("fs");
-      if (!fs.existsSync(capture.imagemPath)) {
-        return res.status(404).json({ message: "Arquivo não encontrado" });
-      }
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "public, max-age=300");
       res.set("ETag", `"${capture.id}"`);
       if (req.headers["if-none-match"] === `"${capture.id}"`) {
         return res.status(304).end();
       }
-      fs.createReadStream(capture.imagemPath).pipe(res);
+      const { getStreamFromR2 } = await import("./r2");
+      const { stream } = await getStreamFromR2(capture.imagemPath);
+      stream.pipe(res);
     } catch (error) {
       console.error("Error serving client thumbnail:", error);
       res.status(500).json({ message: "Erro ao servir thumbnail" });
@@ -1178,6 +1238,14 @@ export async function registerRoutes(
       }
       const camera = await storage.getCamera(req.params.id);
       if (!camera) return res.status(404).json({ message: "Câmera não encontrada" });
+
+      if (camera.streamUrl && !isSafeTarget(camera.streamUrl)) {
+        return res.status(400).json({ message: "URL de stream não permitida" });
+      }
+      if (camera.hostname && !isSafeTarget(camera.hostname)) {
+        return res.status(400).json({ message: "Hostname não permitido" });
+      }
+
       const result = await fetchSnapshot({
         streamUrl: camera.streamUrl,
         hostname: camera.hostname,
@@ -1199,7 +1267,8 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/client/logout", (req, res) => {
+  app.post("/api/client/logout", isClientAuthenticated, async (req, res) => {
+    await storage.incrementClientTokenVersion(req.clientAccountId!);
     audit("client.logout", { clientAccountId: req.clientAccountId });
     res.clearCookie("skylapse-client-token");
     res.json({ message: "Logout realizado" });
@@ -1234,6 +1303,10 @@ export async function registerRoutes(
   // Change password (authenticated client)
   app.post("/api/client/change-password", isClientAuthenticated, async (req, res) => {
     try {
+      if (!checkChangePasswordRateLimit(req.clientAccountId!)) {
+        return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
+      }
+
       const schema = z.object({
         senhaAtual: z.string().min(1),
         novaSenha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
@@ -1252,7 +1325,9 @@ export async function registerRoutes(
 
       const senhaHash = await bcrypt.hash(parsed.data.novaSenha, 12);
       await storage.updateClientPassword(account.id, senhaHash);
+      await storage.incrementClientTokenVersion(account.id);
       audit("client.password.changed", { accountId: account.id, ip: req.ip });
+      res.clearCookie("skylapse-client-token");
       res.json({ message: "Senha alterada com sucesso" });
     } catch (error) {
       console.error("Error changing password:", error);

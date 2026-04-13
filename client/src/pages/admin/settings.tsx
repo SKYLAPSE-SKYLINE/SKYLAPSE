@@ -329,10 +329,12 @@ export default function AdminSettingsPage() {
                           <Wifi className="h-3 w-3 text-blue-400 shrink-0" />
                           <span className="text-xs text-zinc-400 font-mono flex-1 truncate">{cam.streamUrl}</span>
                           <CopyButton text={cam.streamUrl} />
-                          <a href={`${cam.streamUrl}/`} target="_blank" rel="noreferrer"
-                            className="text-zinc-400 hover:text-zinc-200 transition-colors shrink-0">
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
+                          {/^https?:\/\//i.test(cam.streamUrl) && (
+                            <a href={`${cam.streamUrl}/`} target="_blank" rel="noreferrer"
+                              className="text-zinc-400 hover:text-zinc-200 transition-colors shrink-0">
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
                         </div>
                       ) : cam.hostname ? (
                         <div className="flex items-center gap-2">

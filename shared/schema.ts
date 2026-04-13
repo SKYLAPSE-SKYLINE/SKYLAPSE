@@ -68,6 +68,7 @@ export const clientAccounts = pgTable("client_accounts", {
   senhaHash: text("senha_hash").notNull(),
   status: text("status").default("ativo").notNull(),
   senhaAlterada: boolean("senha_alterada").default(false).notNull(),
+  tokenVersion: integer("token_version").default(0).notNull(),
   resetToken: text("reset_token"),
   resetTokenExpiry: timestamp("reset_token_expiry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -107,6 +108,7 @@ export const adminAccounts = pgTable("admin_accounts", {
   nome: text("nome").notNull(),
   email: text("email").notNull().unique(),
   senhaHash: text("senha_hash").notNull(),
+  tokenVersion: integer("token_version").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

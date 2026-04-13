@@ -74,7 +74,20 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Token encontrado:', 'claudeAiOauth' in d or 'oauthToken' in str\\(d\\)\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\)\")",
-      "Bash(docker network:*)"
+      "Bash(docker network:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Allowed - camera ID:', d.get\\('id','?'\\), '| hostname:', d.get\\('hostname','?'\\)\\)\")",
+      "Bash(grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv script:*)",
+      "Bash(claude mcp:*)",
+      "Bash(kill %1)",
+      "Bash(wait %1)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

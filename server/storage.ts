@@ -63,6 +63,8 @@ export interface IStorage {
   setClientCameraAccess(clientAccountId: string, cameraIds: string[]): Promise<void>;
   getClientCameraIds(clientAccountId: string): Promise<string[]>;
   updateClientPassword(id: string, senhaHash: string): Promise<void>;
+  incrementClientTokenVersion(id: string): Promise<void>;
+  incrementAdminTokenVersion(id: string): Promise<void>;
   getClientAccountByResetToken(token: string): Promise<ClientAccount | undefined>;
   setResetToken(id: string, token: string, expiry: Date): Promise<void>;
   clearResetToken(id: string): Promise<void>;
@@ -384,6 +386,18 @@ export class DatabaseStorage implements IStorage {
     await db.update(clientAccounts)
       .set({ senhaHash, senhaAlterada: true })
       .where(eq(clientAccounts.id, id));
+  }
+
+  async incrementClientTokenVersion(id: string): Promise<void> {
+    await db.update(clientAccounts)
+      .set({ tokenVersion: sql`${clientAccounts.tokenVersion} + 1` })
+      .where(eq(clientAccounts.id, id));
+  }
+
+  async incrementAdminTokenVersion(id: string): Promise<void> {
+    await db.update(adminAccounts)
+      .set({ tokenVersion: sql`${adminAccounts.tokenVersion} + 1` })
+      .where(eq(adminAccounts.id, id));
   }
 
   async getClientAccountByResetToken(token: string): Promise<ClientAccount | undefined> {

@@ -3,26 +3,53 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-// Block cloud metadata endpoints and other dangerous targets.
-// Note: private IP ranges (10.x, 192.168.x) are intentionally allowed
-// because cameras live on LAN. Only specific abuse targets are blocked.
+// Block cloud metadata endpoints, loopback addresses, and other dangerous targets.
+// Note: private IP ranges (10.x, 192.168.x, 172.16.x) are intentionally allowed
+// because real cameras live on LAN. Only loopback and abuse targets are blocked.
 const BLOCKED_HOSTS = new Set([
-  "169.254.169.254",      // AWS/GCP/Azure instance metadata
+  "169.254.169.254",        // AWS/GCP/Azure instance metadata
   "metadata.google.internal",
   "metadata.internal",
+  "localhost",              // loopback hostname
+  "0.0.0.0",               // unspecified/loopback alias
+  "::1",                   // IPv6 loopback
+  "[::1]",                 // IPv6 loopback (bracketed form)
 ]);
+
+// Matches entire 127.0.0.0/8 loopback range
+const LOOPBACK_IPV4 = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+// Matches URI schemes like javascript:, data:, vbscript:, ftp:
+// A scheme starts with a letter followed by letters/digits/+/-/. then ":"
+// Excludes IP:port patterns like "192.168.1.1:8080" since those start with digits
+const NON_HTTP_SCHEME = /^[a-z][a-z0-9+\-.]*:/;
 
 export function isSafeTarget(input: string): boolean {
   try {
-    // If it looks like a URL, parse and check hostname
+    let hostname: string;
+
     if (input.startsWith("http://") || input.startsWith("https://")) {
       const url = new URL(input);
       if (!["http:", "https:"].includes(url.protocol)) return false;
-      if (BLOCKED_HOSTS.has(url.hostname.toLowerCase())) return false;
-      return true;
+      hostname = url.hostname.toLowerCase();
+    } else {
+      const stripped = input.toLowerCase();
+      // Reject path/query components (bypass vector)
+      if (stripped.includes("/") || stripped.includes("?")) return false;
+      // Block non-http URI schemes: javascript:, data:, vbscript:, ftp:, etc.
+      if (NON_HTTP_SCHEME.test(stripped)) return false;
+      // Check full value before stripping port (catches "::1" → "" after split)
+      if (BLOCKED_HOSTS.has(stripped)) return false;
+      // Strip port if present (skip for IPv6 addresses)
+      hostname = (!stripped.startsWith("[") && stripped.includes(":"))
+        ? stripped.split(":")[0]
+        : stripped;
     }
-    // Otherwise treat as hostname
-    return !BLOCKED_HOSTS.has(input.toLowerCase());
+
+    if (BLOCKED_HOSTS.has(hostname)) return false;
+    if (LOOPBACK_IPV4.test(hostname)) return false;
+
+    return true;
   } catch {
     return false;
   }
@@ -80,6 +107,11 @@ function buildSnapshotUrl(config: { hostname: string; portaHttp: number; usuario
 }
 
 async function fetchRawImage(url: string, authHeader?: string): Promise<SnapshotResult> {
+  // Defense-in-depth: block SSRF even if called directly with a dangerous URL
+  if (!isSafeTarget(url)) {
+    return { sucesso: false, mensagem: "URL bloqueada por política de segurança" };
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -127,6 +159,10 @@ async function fetchRawImage(url: string, authHeader?: string): Promise<Snapshot
 }
 
 export async function fetchSnapshotFromGo2rtc(streamUrl: string, source: string = 'camera1_hd'): Promise<SnapshotResult> {
+  if (!isSafeTarget(streamUrl)) {
+    return { sucesso: false, mensagem: "URL de stream bloqueada por política de segurança" };
+  }
+
   const frameUrl = `${streamUrl.replace(/\/$/, '')}/api/frame.jpeg?src=${source}`;
   console.log(`[go2rtc] Capturing snapshot from: ${frameUrl}`);
 

@@ -1,19 +1,13 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { log } from "./index";
+import { getFromR2, uploadToR2 } from "./r2";
 
 const execFileAsync = promisify(execFile);
-const VIDEOS_DIR = path.resolve("uploads/videos");
-
-function ensureVideosDir() {
-  if (!fs.existsSync(VIDEOS_DIR)) {
-    fs.mkdirSync(VIDEOS_DIR, { recursive: true });
-    log("Diretório de vídeos criado: " + VIDEOS_DIR, "timelapse-job");
-  }
-}
 
 async function processTimelapse(timelapse: {
   id: string;
@@ -66,105 +60,120 @@ async function processTimelapse(timelapse: {
     return da - db;
   });
 
-  // Filtrar capturas que tem arquivo no disco
-  const validCaptures = sorted.filter((c) => c.imagemPath && fs.existsSync(path.resolve(c.imagemPath)));
-
-  if (validCaptures.length < 2) {
-    await storage.updateTimelapse(timelapse.id, {
-      status: "erro",
-      erroMensagem: `Apenas ${validCaptures.length} captura(s) com arquivo válido. Mínimo: 2`,
-    } as any);
-    log(`Timelapse "${timelapse.nome || timelapse.id}": capturas insuficientes (${validCaptures.length})`, "timelapse-job");
-    return;
-  }
-
-  await storage.updateTimelapse(timelapse.id, { progresso: 10 } as any);
-
-  // Criar arquivo de lista para o ffmpeg (concat demuxer)
-  const listDir = path.join(VIDEOS_DIR, "temp");
-  if (!fs.existsSync(listDir)) {
-    fs.mkdirSync(listDir, { recursive: true });
-  }
-  const listFile = path.join(listDir, `${timelapse.id}.txt`);
-  const listContent = validCaptures
-    .map((c) => `file '${path.resolve(c.imagemPath!)}'`)
-    .map((line) => `${line}\nduration ${1 / fps}`)
-    .join("\n");
-  fs.writeFileSync(listFile, listContent);
-
-  await storage.updateTimelapse(timelapse.id, { progresso: 20 } as any);
-
-  // Gerar video com ffmpeg
-  const outputFilename = `${timelapse.id}.mp4`;
-  const outputPath = path.join(VIDEOS_DIR, outputFilename);
+  // Criar diretório temporário para baixar imagens do R2
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `timelapse-${timelapse.id}-`));
 
   try {
-    await execFileAsync("ffmpeg", [
-      "-y",
-      "-f", "concat",
-      "-safe", "0",
-      "-i", listFile,
-      "-vf", `fps=${fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
-      "-c:v", "libx264",
-      "-preset", "medium",
-      "-crf", "23",
-      "-pix_fmt", "yuv420p",
-      "-movflags", "+faststart",
-      outputPath,
-    ], {
-      timeout: 600_000, // 10 min max
-    });
-  } catch (error: any) {
+    // Baixar capturas do R2 para disco temporário
+    const validPaths: string[] = [];
+    let downloadedCount = 0;
+
+    for (const capture of sorted) {
+      if (!capture.imagemPath) continue;
+      try {
+        const buffer = await getFromR2(capture.imagemPath);
+        const localPath = path.join(tmpDir, `frame_${String(downloadedCount).padStart(6, "0")}.jpg`);
+        fs.writeFileSync(localPath, buffer);
+        validPaths.push(localPath);
+        downloadedCount++;
+      } catch {
+        // Skip captures that fail to download
+      }
+    }
+
+    if (validPaths.length < 2) {
+      await storage.updateTimelapse(timelapse.id, {
+        status: "erro",
+        erroMensagem: `Apenas ${validPaths.length} captura(s) com arquivo válido. Mínimo: 2`,
+      } as any);
+      log(`Timelapse "${timelapse.nome || timelapse.id}": capturas insuficientes (${validPaths.length})`, "timelapse-job");
+      return;
+    }
+
+    await storage.updateTimelapse(timelapse.id, { progresso: 30 } as any);
+
+    // Criar arquivo de lista para o ffmpeg (concat demuxer)
+    const listFile = path.join(tmpDir, "list.txt");
+    const listContent = validPaths
+      .map((p) => `file '${p}'`)
+      .map((line) => `${line}\nduration ${1 / fps}`)
+      .join("\n");
+    fs.writeFileSync(listFile, listContent);
+
+    await storage.updateTimelapse(timelapse.id, { progresso: 40 } as any);
+
+    // Gerar video com ffmpeg
+    const outputPath = path.join(tmpDir, `${timelapse.id}.mp4`);
+
+    try {
+      await execFileAsync("ffmpeg", [
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", listFile,
+        "-vf", `fps=${fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        outputPath,
+      ], {
+        timeout: 600_000, // 10 min max
+      });
+    } catch (error: any) {
+      await storage.updateTimelapse(timelapse.id, {
+        status: "erro",
+        erroMensagem: `Erro do ffmpeg: ${error.message?.substring(0, 200)}`,
+      } as any);
+      log(`Timelapse "${timelapse.nome || timelapse.id}": erro ffmpeg — ${error.message}`, "timelapse-job");
+      return;
+    }
+
+    await storage.updateTimelapse(timelapse.id, { progresso: 80 } as any);
+
+    // Ler vídeo e fazer upload para R2
+    const videoBuffer = fs.readFileSync(outputPath);
+    const r2Key = `videos/${timelapse.id}.mp4`;
+    await uploadToR2(r2Key, videoBuffer, "video/mp4");
+
+    await storage.updateTimelapse(timelapse.id, { progresso: 95 } as any);
+
+    // Obter tamanho e duracao do video
+    let tamanhoBytes = videoBuffer.length;
+    let duracaoSegundos = 0;
+    try {
+      const { stdout } = await execFileAsync("ffprobe", [
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "csv=p=0",
+        outputPath,
+      ]);
+      duracaoSegundos = Math.round(parseFloat(stdout.trim()) || 0);
+    } catch {
+      // nao critico
+    }
+
     await storage.updateTimelapse(timelapse.id, {
-      status: "erro",
-      erroMensagem: `Erro do ffmpeg: ${error.message?.substring(0, 200)}`,
+      status: "pronto",
+      progresso: 100,
+      videoUrl: r2Key,
+      videoPath: r2Key,
+      tamanhoBytes,
+      duracaoSegundos,
+      totalFrames: validPaths.length,
+      completedAt: new Date(),
     } as any);
-    log(`Timelapse "${timelapse.nome || timelapse.id}": erro ffmpeg — ${error.message}`, "timelapse-job");
-    // Cleanup
-    if (fs.existsSync(listFile)) fs.unlinkSync(listFile);
-    return;
+
+    const sizeMB = (tamanhoBytes / 1024 / 1024).toFixed(1);
+    log(
+      `Timelapse "${timelapse.nome || timelapse.id}" pronto: ${validPaths.length} frames, ${duracaoSegundos}s, ${sizeMB}MB`,
+      "timelapse-job",
+    );
+  } finally {
+    // Cleanup temp directory
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-
-  // Cleanup lista temporaria
-  if (fs.existsSync(listFile)) fs.unlinkSync(listFile);
-
-  await storage.updateTimelapse(timelapse.id, { progresso: 90 } as any);
-
-  // Obter tamanho e duracao do video
-  let tamanhoBytes = 0;
-  let duracaoSegundos = 0;
-  try {
-    const stat = fs.statSync(outputPath);
-    tamanhoBytes = stat.size;
-    const { stdout } = await execFileAsync("ffprobe", [
-      "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "csv=p=0",
-      outputPath,
-    ]);
-    duracaoSegundos = Math.round(parseFloat(stdout.trim()) || 0);
-  } catch {
-    // nao critico
-  }
-
-  const videoUrl = `/api/videos/${outputFilename}`;
-
-  await storage.updateTimelapse(timelapse.id, {
-    status: "pronto",
-    progresso: 100,
-    videoUrl,
-    videoPath: outputPath,
-    tamanhoBytes,
-    duracaoSegundos,
-    totalFrames: validCaptures.length,
-    completedAt: new Date(),
-  } as any);
-
-  const sizeMB = (tamanhoBytes / 1024 / 1024).toFixed(1);
-  log(
-    `Timelapse "${timelapse.nome || timelapse.id}" pronto: ${validCaptures.length} frames, ${duracaoSegundos}s, ${sizeMB}MB`,
-    "timelapse-job",
-  );
 }
 
 async function checkQueue() {
@@ -176,15 +185,15 @@ async function checkQueue() {
 
     // Processar um de cada vez
     const next = pending[pending.length - 1]; // mais antigo primeiro
-    await processTimelapse(next);
+    if (!next.cameraId) return;
+    await processTimelapse({ ...next, cameraId: next.cameraId });
   } catch (err: any) {
     log(`Erro ao verificar fila: ${err.message}`, "timelapse-job");
   }
 }
 
 export function startTimelapseJob() {
-  ensureVideosDir();
-  log("Job de timelapse iniciado (verifica fila a cada 30s)", "timelapse-job");
+  log("Job de timelapse iniciado (R2 storage, verifica fila a cada 30s)", "timelapse-job");
 
   setInterval(() => {
     checkQueue();

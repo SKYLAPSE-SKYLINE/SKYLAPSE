@@ -31,8 +31,9 @@ export default function CameraLivePage() {
 
   const snapshotUrl = `/api/admin/cameras/${cameraId}/snapshot?t=${refreshKey}`;
   const streamUrl = (camera as any)?.streamUrl as string | null | undefined;
-  const liveStreamUrl = streamUrl
-    ? `${streamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
+  const safeStreamUrl = streamUrl && /^https?:\/\//i.test(streamUrl) ? streamUrl : null;
+  const liveStreamUrl = safeStreamUrl
+    ? `${safeStreamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
     : null;
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function CameraLivePage() {
           </div>
 
           {/* Mode toggle */}
-          {streamUrl && (
+          {safeStreamUrl && (
             <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 ml-2">
               <button
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "snapshot" ? "bg-zinc-700 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-300"}`}
