@@ -856,11 +856,12 @@ export async function registerRoutes(
   app.post("/api/admin/client-accounts", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertClientAccountSchema.parse(req.body);
+      const senhaTrim = data.senha.trim();
       const existing = await storage.getClientAccountByEmail(data.email);
       if (existing) {
         return res.status(409).json({ message: "Já existe uma conta com este e-mail" });
       }
-      const senhaHash = await bcrypt.hash(data.senha, 12);
+      const senhaHash = await bcrypt.hash(senhaTrim, 12);
       const account = await storage.createClientAccount({
         clienteId: data.clienteId || null,
         nome: data.nome,
@@ -878,7 +879,7 @@ export async function registerRoutes(
       sendWelcomeEmail({
         nome: data.nome,
         email: data.email,
-        senha: data.senha,
+        senha: senhaTrim,
         clienteNome: clienteNome || undefined,
       }).catch((err) => console.error("[email] Falha ao enviar:", err));
 
@@ -955,7 +956,8 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
       }
-      const { email, senha } = parsed.data;
+      const { email } = parsed.data;
+      const senha = parsed.data.senha.trim();
       if (!checkRateLimit(ip, email)) {
         return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
       }
@@ -1015,7 +1017,8 @@ export async function registerRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
       }
-      const { email, senha } = parsed.data;
+      const { email } = parsed.data;
+      const senha = parsed.data.senha.trim();
       if (!checkRateLimit(ip, email)) {
         return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
       }
@@ -1086,7 +1089,8 @@ export async function registerRoutes(
   app.post("/api/admin/accounts", isAdminAuthenticated, async (req, res) => {
     try {
       const data = insertAdminAccountSchema.parse(req.body);
-      const senhaHash = await bcrypt.hash(data.senha, 12);
+      const senhaTrim = data.senha.trim();
+      const senhaHash = await bcrypt.hash(senhaTrim, 12);
       const account = await storage.createAdminAccount({
         nome: data.nome,
         email: data.email,
@@ -1095,7 +1099,7 @@ export async function registerRoutes(
       sendAdminWelcomeEmail({
         nome: data.nome,
         email: data.email,
-        senha: data.senha,
+        senha: senhaTrim,
       }).catch(console.error);
       audit("admin.account.created", { creatorId: req.adminAccountId, newAccountId: account.id, email: data.email });
       res.status(201).json({ id: account.id, nome: account.nome, email: account.email, createdAt: account.createdAt });

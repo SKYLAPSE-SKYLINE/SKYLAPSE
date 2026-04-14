@@ -332,7 +332,7 @@ function buildWelcomeHtml(params: {
               </div>
 
               <!-- CTA Button -->
-              <a href="${portalUrl}/cliente"
+              <a href="${portalUrl}/login"
                  style="display:block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#ffffff;text-decoration:none;text-align:center;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;letter-spacing:0.3px;">
                 Acessar o Portal
               </a>
