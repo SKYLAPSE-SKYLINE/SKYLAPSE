@@ -640,22 +640,31 @@ export async function registerRoutes(
     }
   });
 
-  // Fast thumbnail from last saved capture (serves from R2)
+  // Fast thumbnail from last saved capture (serves resized JPEG from R2)
   app.get("/api/admin/cameras/:id/thumbnail", isAdminAuthenticated, async (req, res) => {
     try {
       const capture = await storage.getLastCapture(req.params.id);
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
       }
+      const etag = `"thumb-${capture.id}"`;
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "public, max-age=300");
-      res.set("ETag", `"${capture.id}"`);
-      if (req.headers["if-none-match"] === `"${capture.id}"`) {
+      res.set("ETag", etag);
+      if (req.headers["if-none-match"] === etag) {
         return res.status(304).end();
       }
-      const { getStreamFromR2 } = await import("./r2");
-      const { stream } = await getStreamFromR2(capture.imagemPath);
-      stream.pipe(res);
+      try {
+        const { getResizedThumbnail } = await import("./thumbnail");
+        const buf = await getResizedThumbnail({ captureId: capture.id, r2Key: capture.imagemPath });
+        res.send(buf);
+      } catch (resizeErr) {
+        // Fallback: stream original if resize fails (corrupt image, etc)
+        console.error("[thumbnail] resize failed, falling back to original:", resizeErr);
+        const { getStreamFromR2 } = await import("./r2");
+        const { stream } = await getStreamFromR2(capture.imagemPath);
+        stream.pipe(res);
+      }
     } catch (error) {
       console.error("Error serving thumbnail:", error);
       res.status(500).json({ message: "Erro ao servir thumbnail" });
@@ -1269,15 +1278,23 @@ export async function registerRoutes(
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
       }
+      const etag = `"thumb-${capture.id}"`;
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "public, max-age=300");
-      res.set("ETag", `"${capture.id}"`);
-      if (req.headers["if-none-match"] === `"${capture.id}"`) {
+      res.set("ETag", etag);
+      if (req.headers["if-none-match"] === etag) {
         return res.status(304).end();
       }
-      const { getStreamFromR2 } = await import("./r2");
-      const { stream } = await getStreamFromR2(capture.imagemPath);
-      stream.pipe(res);
+      try {
+        const { getResizedThumbnail } = await import("./thumbnail");
+        const buf = await getResizedThumbnail({ captureId: capture.id, r2Key: capture.imagemPath });
+        res.send(buf);
+      } catch (resizeErr) {
+        console.error("[thumbnail] resize failed, falling back to original:", resizeErr);
+        const { getStreamFromR2 } = await import("./r2");
+        const { stream } = await getStreamFromR2(capture.imagemPath);
+        stream.pipe(res);
+      }
     } catch (error) {
       console.error("Error serving client thumbnail:", error);
       res.status(500).json({ message: "Erro ao servir thumbnail" });
