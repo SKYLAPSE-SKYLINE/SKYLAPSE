@@ -124,11 +124,13 @@ export async function sendCameraOfflineEmail(params: {
     to: process.env.ADMIN_NOTIFICATION_EMAIL,
     subject: `Câmera offline — ${params.cameraNome}`,
     html: `
-      <div style="font-family:sans-serif;background:#0a0e17;color:#f9fafb;padding:32px;border-radius:12px;max-width:480px;">
-        <h2 style="color:#f87171;margin:0 0 16px;">Câmera Offline</h2>
-        <p style="color:#9ca3af;margin:0 0 8px;">A câmera <strong style="color:#f9fafb;">${cameraNome}</strong> parou de responder.</p>
-        <p style="color:#9ca3af;margin:0 0 24px;">Detectado em: <strong style="color:#f9fafb;">${now}</strong></p>
-        <a href="${portalUrl}/admin/cameras" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Ver no Portal</a>
+      <div style="background-color:#ffffff;padding:40px 20px;font-family:sans-serif;">
+        <div style="font-family:sans-serif;background:#111827;color:#f9fafb;padding:32px;border-radius:12px;max-width:480px;margin:0 auto;border:1px solid #1f2937;">
+          <h2 style="color:#f87171;margin:0 0 16px;">Câmera Offline</h2>
+          <p style="color:#9ca3af;margin:0 0 8px;">A câmera <strong style="color:#f9fafb;">${cameraNome}</strong> parou de responder.</p>
+          <p style="color:#9ca3af;margin:0 0 24px;">Detectado em: <strong style="color:#f9fafb;">${now}</strong></p>
+          <a href="${portalUrl}/admin/cameras" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Ver no Portal</a>
+        </div>
       </div>`,
   }).catch(console.error);
 }
@@ -156,13 +158,15 @@ export async function sendNewTicketEmail(params: {
     to: process.env.ADMIN_NOTIFICATION_EMAIL,
     subject: `[Suporte] Novo ticket: ${params.assunto}`,
     html: `
-      <div style="font-family:sans-serif;background:#0a0e17;color:#f9fafb;padding:32px;border-radius:12px;max-width:560px;">
-        <h2 style="color:#3b82f6;margin:0 0 16px;">Novo ticket de suporte</h2>
-        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Cliente:</strong> ${clienteNome}</p>
-        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Assunto:</strong> ${assunto}</p>
-        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Categoria:</strong> ${categoria} — <strong style="color:#f9fafb;">Prioridade:</strong> ${prioridade}</p>
-        <div style="background:#111827;border-left:3px solid #3b82f6;padding:12px 16px;margin:16px 0;color:#e5e7eb;">${mensagem}</div>
-        <a href="${link}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Responder no Portal</a>
+      <div style="background-color:#ffffff;padding:40px 20px;font-family:sans-serif;">
+        <div style="font-family:sans-serif;background:#111827;color:#f9fafb;padding:32px;border-radius:12px;max-width:560px;margin:0 auto;border:1px solid #1f2937;">
+          <h2 style="color:#3b82f6;margin:0 0 16px;">Novo ticket de suporte</h2>
+          <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Cliente:</strong> ${clienteNome}</p>
+          <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Assunto:</strong> ${assunto}</p>
+          <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Categoria:</strong> ${categoria} — <strong style="color:#f9fafb;">Prioridade:</strong> ${prioridade}</p>
+          <div style="background:#0a0e17;border-left:3px solid #3b82f6;padding:12px 16px;margin:16px 0;color:#e5e7eb;">${mensagem}</div>
+          <a href="${link}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Responder no Portal</a>
+        </div>
       </div>`,
   }).catch(console.error);
 }
@@ -176,8 +180,8 @@ function buildAdminWelcomeHtml(params: { nome: string; email: string; senha: str
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e17;padding:40px 20px;">
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#ffffff;padding:40px 20px;">
     <tr><td align="center">
       <table width="500" cellpadding="0" cellspacing="0" style="background-color:#111827;border-radius:16px;border:1px solid #1f2937;overflow:hidden;">
         <tr>
@@ -233,8 +237,8 @@ function buildResetHtml(params: { nome: string; resetUrl: string }): string {
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e17;padding:40px 20px;">
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#ffffff;padding:40px 20px;">
     <tr><td align="center">
       <table width="500" cellpadding="0" cellspacing="0" style="background-color:#111827;border-radius:16px;border:1px solid #1f2937;overflow:hidden;">
         <tr>
@@ -287,8 +291,8 @@ function buildWelcomeHtml(params: {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin:0;padding:0;background-color:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e17;padding:40px 20px;">
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#ffffff;padding:40px 20px;">
     <tr>
       <td align="center">
         <table width="500" cellpadding="0" cellspacing="0" style="background-color:#111827;border-radius:16px;border:1px solid #1f2937;overflow:hidden;">

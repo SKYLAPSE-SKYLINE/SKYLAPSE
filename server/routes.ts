@@ -35,34 +35,55 @@ declare global {
 const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 const ADMIN_JWT_SECRET = process.env.SESSION_SECRET! + "_admin";
 
-// Rate limiting for login endpoints (keyed by IP)
+// Rate limiting for login endpoints.
+// Keyed by `${ip}|${email}` so failures on account A don't block account B
+// from the same IP. Also keeps separate buckets from forgot/reset flows below.
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
-// Returns true if the IP is allowed to attempt login (i.e. not blocked).
-// Does NOT consume an attempt — only checks. Call recordFailedLogin() on failure.
-function checkRateLimit(ip: string): boolean {
+function loginKey(ip: string, email?: string): string {
+  return email ? `${ip}|${email.toLowerCase()}` : ip;
+}
+
+// Returns true if allowed to attempt login. Does NOT consume an attempt.
+function checkRateLimit(ip: string, email?: string): boolean {
   const now = Date.now();
-  const entry = loginAttempts.get(ip);
+  const entry = loginAttempts.get(loginKey(ip, email));
   if (!entry || now > entry.resetAt) return true;
   return entry.count < RATE_LIMIT_MAX;
 }
 
 // Call on a FAILED login to increment the counter.
-function recordFailedLogin(ip: string): void {
+function recordFailedLogin(ip: string, email?: string): void {
   const now = Date.now();
-  const entry = loginAttempts.get(ip);
+  const key = loginKey(ip, email);
+  const entry = loginAttempts.get(key);
   if (!entry || now > entry.resetAt) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    loginAttempts.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
     return;
   }
   entry.count++;
 }
 
-// Call on a SUCCESSFUL login to reset the counter for that IP.
-function resetRateLimit(ip: string): void {
-  loginAttempts.delete(ip);
+// Call on a SUCCESSFUL login to reset the counter.
+function resetRateLimit(ip: string, email?: string): void {
+  loginAttempts.delete(loginKey(ip, email));
+}
+
+// Separate bucket for forgot/reset password — keyed by IP only, so these
+// endpoints cannot drain (or be drained by) the login budget.
+const resetAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkResetRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = resetAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    resetAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
 }
 
 // Rate limiting for change-password (keyed by accountId — independent of login rate limit
@@ -88,6 +109,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of loginAttempts) {
     if (now > entry.resetAt) loginAttempts.delete(ip);
+  }
+  for (const [ip, entry] of resetAttempts) {
+    if (now > entry.resetAt) resetAttempts.delete(ip);
   }
   for (const [id, entry] of changePasswordAttempts) {
     if (now > entry.resetAt) changePasswordAttempts.delete(id);
@@ -923,9 +947,6 @@ export async function registerRoutes(
   app.post("/api/client/login", async (req, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(ip)) {
-        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
-      }
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha é obrigatória"),
@@ -935,24 +956,27 @@ export async function registerRoutes(
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
       }
       const { email, senha } = parsed.data;
+      if (!checkRateLimit(ip, email)) {
+        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
+      }
       const account = await storage.getClientAccountByEmail(email);
       if (!account) {
-        recordFailedLogin(ip);
+        recordFailedLogin(ip, email);
         audit("client.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       if (account.status !== "ativo") {
-        recordFailedLogin(ip);
+        recordFailedLogin(ip, email);
         audit("client.login.failure", { email, ip, reason: "account_inactive" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
-        recordFailedLogin(ip);
+        recordFailedLogin(ip, email);
         audit("client.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
-      resetRateLimit(ip);
+      resetRateLimit(ip, email);
       audit("client.login.success", { accountId: account.id, email, ip });
       const cameraIds = await storage.getClientCameraIds(account.id);
       const token = jwt.sign(
@@ -983,9 +1007,6 @@ export async function registerRoutes(
   app.post("/api/admin/login", async (req, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(ip)) {
-        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
-      }
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha obrigatória"),
@@ -995,19 +1016,22 @@ export async function registerRoutes(
         return res.status(400).json({ message: parsed.error.errors[0]?.message || "Dados inválidos" });
       }
       const { email, senha } = parsed.data;
+      if (!checkRateLimit(ip, email)) {
+        return res.status(429).json({ message: "Muitas tentativas de login. Aguarde 15 minutos." });
+      }
       const account = await storage.getAdminAccountByEmail(email);
       if (!account) {
-        recordFailedLogin(ip);
+        recordFailedLogin(ip, email);
         audit("admin.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
-        recordFailedLogin(ip);
+        recordFailedLogin(ip, email);
         audit("admin.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
-      resetRateLimit(ip);
+      resetRateLimit(ip, email);
       audit("admin.login.success", { accountId: account.id, email, ip });
       const token = jwt.sign(
         { adminAccountId: account.id, tv: account.tokenVersion ?? 0 },
@@ -1365,10 +1389,9 @@ export async function registerRoutes(
   app.post("/api/client/forgot-password", async (req, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(ip)) {
+      if (!checkResetRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
-      recordFailedLogin(ip); // throttle by consuming one slot per request
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
       const account = await storage.getClientAccountByEmail(email);
       // Always return success to avoid email enumeration
@@ -1392,10 +1415,9 @@ export async function registerRoutes(
   app.post("/api/client/reset-password", async (req, res) => {
     try {
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      if (!checkRateLimit(ip)) {
+      if (!checkResetRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
-      recordFailedLogin(ip); // throttle by consuming one slot per request
       const schema = z.object({
         token: z.string().min(1),
         novaSenha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
