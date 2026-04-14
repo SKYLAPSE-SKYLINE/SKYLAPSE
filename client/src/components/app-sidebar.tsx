@@ -1,6 +1,7 @@
-import { Camera, LayoutDashboard, Users, MapPin, Video, Settings, LogOut, UserCog } from "lucide-react";
+import { Camera, LayoutDashboard, Users, MapPin, Video, Settings, LogOut, UserCog, LifeBuoy } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
@@ -9,11 +10,16 @@ const navItems = [
   { title: "Clientes", url: "/admin/clientes", icon: Users },
   { title: "Contas", url: "/admin/contas", icon: UserCog },
   { title: "Localidades", url: "/admin/localidades", icon: MapPin },
+  { title: "Suporte", url: "/admin/suporte", icon: LifeBuoy, badge: "tickets" as const },
 ];
 
 export function AppSidebar({ collapsed, onToggle }: { collapsed?: boolean; onToggle?: () => void }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { data: ticketCount } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/tickets/count-open"],
+    refetchInterval: 60_000,
+  });
 
   const getInitials = (name?: string | null) => {
     if (!name) return "A";
@@ -44,7 +50,7 @@ export function AppSidebar({ collapsed, onToggle }: { collapsed?: boolean; onTog
             <Link
               key={item.url}
               href={item.url}
-              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all ${
                 isActive
                   ? "bg-zinc-800 text-white"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-900"
@@ -53,7 +59,12 @@ export function AppSidebar({ collapsed, onToggle }: { collapsed?: boolean; onTog
               title={collapsed ? item.title : undefined}
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.title}</span>}
+              {!collapsed && <span className="truncate flex-1">{item.title}</span>}
+              {item.badge === "tickets" && ticketCount && ticketCount.count > 0 && (
+                <span className={`inline-flex items-center justify-center rounded-full bg-blue-600 text-white text-[10px] font-semibold ${collapsed ? "absolute top-1 right-1 w-4 h-4" : "min-w-[20px] h-5 px-1.5"}`}>
+                  {ticketCount.count}
+                </span>
+              )}
             </Link>
           );
         })}

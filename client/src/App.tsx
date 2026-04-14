@@ -21,6 +21,8 @@ import AdminSettingsPage from "@/pages/admin/settings";
 import LoginPage from "@/pages/client-login";
 import ClienteDashboard from "@/pages/cliente/dashboard";
 import ClienteCameraCaptures from "@/pages/cliente/camera-captures";
+import ClienteSuporte from "@/pages/cliente/suporte";
+import AdminSuporte from "@/pages/admin/suporte";
 import ResetSenhaPage from "@/pages/cliente/reset-senha";
 
 function ClientProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -69,6 +71,11 @@ function AppRouter() {
           <ClienteDashboard />
         </ClientProtectedRoute>
       </Route>
+      <Route path="/cliente/suporte">
+        <ClientProtectedRoute>
+          <ClienteSuporte />
+        </ClientProtectedRoute>
+      </Route>
       <Route path="/cliente/cameras/:id/capturas">
         <ClientProtectedRoute>
           <ClienteCameraCaptures />
@@ -82,6 +89,7 @@ function AppRouter() {
       <Route path="/admin/cameras/:id/galeria"><AdminProtectedRoute><CameraGalleryPage /></AdminProtectedRoute></Route>
       <Route path="/admin/cameras"><AdminProtectedRoute><CamerasPage /></AdminProtectedRoute></Route>
       <Route path="/admin/timelapses"><AdminProtectedRoute><TimelapsesPage /></AdminProtectedRoute></Route>
+      <Route path="/admin/suporte"><AdminProtectedRoute><AdminSuporte /></AdminProtectedRoute></Route>
       <Route path="/admin/configuracoes"><AdminProtectedRoute><AdminSettingsPage /></AdminProtectedRoute></Route>
       <Route path="/" component={LoginPage} />
       <Route component={NotFound} />

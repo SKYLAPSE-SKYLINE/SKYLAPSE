@@ -1,6 +1,7 @@
-import { 
+import {
   clients, locations, cameras, captures, timelapses,
   clientAccounts, clientCameraAccess, adminAccounts,
+  supportTickets, supportMessages,
   type Client, type InsertClient,
   type Location, type InsertLocation,
   type Camera, type InsertCamera,
@@ -8,6 +9,7 @@ import {
   type Timelapse, type InsertTimelapse,
   type ClientAccount, type ClientAccountWithRelations,
   type AdminAccount,
+  type SupportTicket, type SupportMessage, type SupportTicketWithMessages,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -77,6 +79,28 @@ export interface IStorage {
   updateAdminAccount(id: string, data: Partial<{ nome: string; email: string; senhaHash: string }>): Promise<AdminAccount | undefined>;
   deleteAdminAccount(id: string): Promise<boolean>;
   countAdminAccounts(): Promise<number>;
+
+  // Support tickets
+  getSupportTickets(status?: string): Promise<(SupportTicket & { clientAccount?: ClientAccount | null })[]>;
+  getSupportTicketsByClient(clientAccountId: string): Promise<SupportTicket[]>;
+  getSupportTicket(id: string): Promise<SupportTicketWithMessages | undefined>;
+  createSupportTicket(data: {
+    clientAccountId: string;
+    assunto: string;
+    categoria: string;
+    prioridade: string;
+    mensagem: string;
+    autorNome: string;
+  }): Promise<SupportTicket>;
+  updateSupportTicket(id: string, patch: Partial<Pick<SupportTicket, "status" | "prioridade">>): Promise<SupportTicket | undefined>;
+  addSupportMessage(data: {
+    ticketId: string;
+    autorTipo: "cliente" | "admin";
+    autorId: string;
+    autorNome: string;
+    mensagem: string;
+  }): Promise<SupportMessage>;
+  countOpenSupportTickets(): Promise<number>;
 
   // Dashboard extra
   getDashboardExtra(): Promise<{
@@ -457,6 +481,91 @@ export class DatabaseStorage implements IStorage {
   async countAdminAccounts(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)` }).from(adminAccounts);
     return Number(result.count);
+  }
+
+  // Support tickets
+  async getSupportTickets(status?: string) {
+    const where = status ? eq(supportTickets.status, status) : undefined;
+    const result = await db.query.supportTickets.findMany({
+      where,
+      with: { clientAccount: true },
+      orderBy: desc(supportTickets.updatedAt),
+    });
+    return result;
+  }
+
+  async getSupportTicketsByClient(clientAccountId: string): Promise<SupportTicket[]> {
+    return await db.select().from(supportTickets)
+      .where(eq(supportTickets.clientAccountId, clientAccountId))
+      .orderBy(desc(supportTickets.updatedAt));
+  }
+
+  async getSupportTicket(id: string): Promise<SupportTicketWithMessages | undefined> {
+    const result = await db.query.supportTickets.findFirst({
+      where: eq(supportTickets.id, id),
+      with: {
+        clientAccount: true,
+        messages: {
+          orderBy: (m, { asc }) => asc(m.createdAt),
+        },
+      },
+    });
+    return result as SupportTicketWithMessages | undefined;
+  }
+
+  async createSupportTicket(data: {
+    clientAccountId: string;
+    assunto: string;
+    categoria: string;
+    prioridade: string;
+    mensagem: string;
+    autorNome: string;
+  }): Promise<SupportTicket> {
+    return await db.transaction(async (tx) => {
+      const [ticket] = await tx.insert(supportTickets).values({
+        clientAccountId: data.clientAccountId,
+        assunto: data.assunto,
+        categoria: data.categoria,
+        prioridade: data.prioridade,
+      }).returning();
+      await tx.insert(supportMessages).values({
+        ticketId: ticket.id,
+        autorTipo: "cliente",
+        autorId: data.clientAccountId,
+        autorNome: data.autorNome,
+        mensagem: data.mensagem,
+      });
+      return ticket;
+    });
+  }
+
+  async updateSupportTicket(id: string, patch: Partial<Pick<SupportTicket, "status" | "prioridade">>): Promise<SupportTicket | undefined> {
+    const [updated] = await db.update(supportTickets)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(supportTickets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async addSupportMessage(data: {
+    ticketId: string;
+    autorTipo: "cliente" | "admin";
+    autorId: string;
+    autorNome: string;
+    mensagem: string;
+  }): Promise<SupportMessage> {
+    const [message] = await db.insert(supportMessages).values(data).returning();
+    await db.update(supportTickets)
+      .set({ updatedAt: new Date() })
+      .where(eq(supportTickets.id, data.ticketId));
+    return message;
+  }
+
+  async countOpenSupportTickets(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` })
+      .from(supportTickets)
+      .where(sql`${supportTickets.status} != 'fechado'`);
+    return Number(result?.count) || 0;
   }
 
   // Dashboard extra

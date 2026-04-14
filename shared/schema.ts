@@ -102,6 +102,30 @@ export const timelapses = pgTable("timelapses", {
   completedAt: timestamp("completed_at"),
 });
 
+// Support tickets — cliente abre solicitação, admin responde
+export const supportTickets = pgTable("support_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientAccountId: varchar("client_account_id").notNull().references(() => clientAccounts.id, { onDelete: "cascade" }),
+  assunto: text("assunto").notNull(),
+  categoria: text("categoria").notNull(), // camera | conta | duvida | outro
+  prioridade: text("prioridade").default("media").notNull(), // baixa | media | alta
+  status: text("status").default("aberto").notNull(), // aberto | em_andamento | resolvido | fechado
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const supportMessages = pgTable("support_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  autorTipo: text("autor_tipo").notNull(), // cliente | admin
+  autorId: varchar("autor_id").notNull(),
+  autorNome: text("autor_nome").notNull(),
+  mensagem: text("mensagem").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_ticket_messages").on(table.ticketId, table.createdAt),
+]);
+
 // Admin accounts — platform administrators (email/password auth, separate from clients)
 export const adminAccounts = pgTable("admin_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -165,6 +189,21 @@ export const timelapsesRelations = relations(timelapses, ({ one }) => ({
   camera: one(cameras, {
     fields: [timelapses.cameraId],
     references: [cameras.id],
+  }),
+}));
+
+export const supportTicketsRelations = relations(supportTickets, ({ one, many }) => ({
+  clientAccount: one(clientAccounts, {
+    fields: [supportTickets.clientAccountId],
+    references: [clientAccounts.id],
+  }),
+  messages: many(supportMessages),
+}));
+
+export const supportMessagesRelations = relations(supportMessages, ({ one }) => ({
+  ticket: one(supportTickets, {
+    fields: [supportMessages.ticketId],
+    references: [supportTickets.id],
   }),
 }));
 
@@ -250,6 +289,31 @@ export const insertAdminAccountSchema = createInsertSchema(adminAccounts).omit({
 
 export type InsertAdminAccount = z.infer<typeof insertAdminAccountSchema>;
 export type AdminAccount = typeof adminAccounts.$inferSelect;
+
+// Support tickets
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  clientAccountId: true,
+}).extend({
+  categoria: z.enum(["camera", "conta", "duvida", "outro"]),
+  prioridade: z.enum(["baixa", "media", "alta"]).default("media"),
+  assunto: z.string().min(3, "Assunto muito curto").max(200),
+  mensagem: z.string().min(1, "Mensagem obrigatória").max(5000),
+});
+
+export const insertSupportMessageSchema = z.object({
+  mensagem: z.string().min(1).max(5000),
+});
+
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type SupportMessage = typeof supportMessages.$inferSelect;
+export type SupportTicketWithMessages = SupportTicket & {
+  messages: SupportMessage[];
+  clientAccount?: ClientAccount | null;
+};
 
 // Extended types with relations
 export type LocationWithClient = Location & { cliente?: Client };

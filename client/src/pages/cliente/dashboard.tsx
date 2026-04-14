@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { LogOut, MapPin, Clock, Eye, Monitor, Wifi, WifiOff, Camera, Images } from "lucide-react";
+import { LogOut, MapPin, Clock, Eye, Monitor, Wifi, WifiOff, Camera, Images, LifeBuoy } from "lucide-react";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,6 +260,15 @@ export default function ClienteDashboard() {
             </span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link
+              href="/cliente/suporte"
+              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+              data-testid="link-suporte"
+              title="Suporte"
+            >
+              <LifeBuoy className="h-4 w-4" />
+              <span className="hidden sm:inline">Suporte</span>
+            </Link>
             <span className="text-xs text-zinc-500 hidden sm:block" data-testid="text-client-name">
               {me?.nome}
             </span>

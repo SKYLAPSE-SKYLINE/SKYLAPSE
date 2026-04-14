@@ -13,7 +13,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { testCameraConnection, fetchSnapshot, testGo2rtcConnection, isSafeTarget } from "./camera-service";
-import { sendWelcomeEmail, sendPasswordResetEmail } from "./email-service";
+import { sendWelcomeEmail, sendPasswordResetEmail, sendNewTicketEmail, sendAdminWelcomeEmail } from "./email-service";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import archiver from "archiver";
@@ -40,16 +40,29 @@ const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
+// Returns true if the IP is allowed to attempt login (i.e. not blocked).
+// Does NOT consume an attempt — only checks. Call recordFailedLogin() on failure.
 function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) return true;
+  return entry.count < RATE_LIMIT_MAX;
+}
+
+// Call on a FAILED login to increment the counter.
+function recordFailedLogin(ip: string): void {
   const now = Date.now();
   const entry = loginAttempts.get(ip);
   if (!entry || now > entry.resetAt) {
     loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
+    return;
   }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
   entry.count++;
-  return true;
+}
+
+// Call on a SUCCESSFUL login to reset the counter for that IP.
+function resetRateLimit(ip: string): void {
+  loginAttempts.delete(ip);
 }
 
 // Rate limiting for change-password (keyed by accountId — independent of login rate limit
@@ -924,18 +937,22 @@ export async function registerRoutes(
       const { email, senha } = parsed.data;
       const account = await storage.getClientAccountByEmail(email);
       if (!account) {
+        recordFailedLogin(ip);
         audit("client.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       if (account.status !== "ativo") {
+        recordFailedLogin(ip);
         audit("client.login.failure", { email, ip, reason: "account_inactive" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
+        recordFailedLogin(ip);
         audit("client.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
+      resetRateLimit(ip);
       audit("client.login.success", { accountId: account.id, email, ip });
       const cameraIds = await storage.getClientCameraIds(account.id);
       const token = jwt.sign(
@@ -980,14 +997,17 @@ export async function registerRoutes(
       const { email, senha } = parsed.data;
       const account = await storage.getAdminAccountByEmail(email);
       if (!account) {
+        recordFailedLogin(ip);
         audit("admin.login.failure", { email, ip, reason: "account_not_found" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
       const valid = await bcrypt.compare(senha, account.senhaHash);
       if (!valid) {
+        recordFailedLogin(ip);
         audit("admin.login.failure", { email, ip, reason: "wrong_password" });
         return res.status(401).json({ message: "E-mail ou senha incorretos" });
       }
+      resetRateLimit(ip);
       audit("admin.login.success", { accountId: account.id, email, ip });
       const token = jwt.sign(
         { adminAccountId: account.id, tv: account.tokenVersion ?? 0 },
@@ -1048,6 +1068,12 @@ export async function registerRoutes(
         email: data.email,
         senhaHash,
       });
+      sendAdminWelcomeEmail({
+        nome: data.nome,
+        email: data.email,
+        senha: data.senha,
+      }).catch(console.error);
+      audit("admin.account.created", { creatorId: req.adminAccountId, newAccountId: account.id, email: data.email });
       res.status(201).json({ id: account.id, nome: account.nome, email: account.email, createdAt: account.createdAt });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1342,6 +1368,7 @@ export async function registerRoutes(
       if (!checkRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
+      recordFailedLogin(ip); // throttle by consuming one slot per request
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
       const account = await storage.getClientAccountByEmail(email);
       // Always return success to avoid email enumeration
@@ -1368,6 +1395,7 @@ export async function registerRoutes(
       if (!checkRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
+      recordFailedLogin(ip); // throttle by consuming one slot per request
       const schema = z.object({
         token: z.string().min(1),
         novaSenha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
@@ -1385,6 +1413,191 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error reset password:", error);
       res.status(500).json({ message: "Erro ao redefinir senha" });
+    }
+  });
+
+  // ==================== Support Tickets ====================
+
+  // Cliente: listar meus tickets
+  app.get("/api/client/tickets", isClientAuthenticated, async (req, res) => {
+    try {
+      const tickets = await storage.getSupportTicketsByClient(req.clientAccountId!);
+      res.json(tickets);
+    } catch (error) {
+      console.error("Error listing client tickets:", error);
+      res.status(500).json({ message: "Erro ao listar tickets" });
+    }
+  });
+
+  // Cliente: detalhe do ticket
+  app.get("/api/client/tickets/:id", isClientAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket || ticket.clientAccountId !== req.clientAccountId) {
+        return res.status(404).json({ message: "Ticket não encontrado" });
+      }
+      res.json(ticket);
+    } catch (error) {
+      console.error("Error getting ticket:", error);
+      res.status(500).json({ message: "Erro ao buscar ticket" });
+    }
+  });
+
+  // Cliente: criar ticket
+  app.post("/api/client/tickets", isClientAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        assunto: z.string().min(3).max(200),
+        categoria: z.enum(["camera", "conta", "duvida", "outro"]),
+        prioridade: z.enum(["baixa", "media", "alta"]).default("media"),
+        mensagem: z.string().min(1).max(5000),
+      });
+      const data = schema.parse(req.body);
+      const account = await storage.getClientAccount(req.clientAccountId!);
+      if (!account) return res.status(404).json({ message: "Conta não encontrada" });
+
+      const ticket = await storage.createSupportTicket({
+        clientAccountId: account.id,
+        assunto: data.assunto,
+        categoria: data.categoria,
+        prioridade: data.prioridade,
+        mensagem: data.mensagem,
+        autorNome: account.nome,
+      });
+
+      sendNewTicketEmail({
+        ticketId: ticket.id,
+        assunto: data.assunto,
+        clienteNome: account.nome,
+        categoria: data.categoria,
+        prioridade: data.prioridade,
+        mensagem: data.mensagem,
+      }).catch(console.error);
+
+      audit("support.ticket.created", { clientAccountId: account.id, ticketId: ticket.id });
+      res.status(201).json(ticket);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error creating ticket:", error);
+      res.status(500).json({ message: "Erro ao criar ticket" });
+    }
+  });
+
+  // Cliente: responder no ticket
+  app.post("/api/client/tickets/:id/messages", isClientAuthenticated, async (req, res) => {
+    try {
+      const { mensagem } = z.object({ mensagem: z.string().min(1).max(5000) }).parse(req.body);
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket || ticket.clientAccountId !== req.clientAccountId) {
+        return res.status(404).json({ message: "Ticket não encontrado" });
+      }
+      if (ticket.status === "fechado") {
+        return res.status(400).json({ message: "Ticket está fechado" });
+      }
+      const account = await storage.getClientAccount(req.clientAccountId!);
+      if (!account) return res.status(404).json({ message: "Conta não encontrada" });
+
+      const msg = await storage.addSupportMessage({
+        ticketId: ticket.id,
+        autorTipo: "cliente",
+        autorId: account.id,
+        autorNome: account.nome,
+        mensagem,
+      });
+      res.status(201).json(msg);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error adding message:", error);
+      res.status(500).json({ message: "Erro ao enviar mensagem" });
+    }
+  });
+
+  // Admin: listar todos (com filtro)
+  app.get("/api/admin/tickets", isAdminAuthenticated, async (req, res) => {
+    try {
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const tickets = await storage.getSupportTickets(status);
+      res.json(tickets);
+    } catch (error) {
+      console.error("Error listing tickets:", error);
+      res.status(500).json({ message: "Erro ao listar tickets" });
+    }
+  });
+
+  // Admin: count para badge
+  app.get("/api/admin/tickets/count-open", isAdminAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.countOpenSupportTickets();
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ message: "Erro ao contar tickets" });
+    }
+  });
+
+  // Admin: detalhe
+  app.get("/api/admin/tickets/:id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket não encontrado" });
+      res.json(ticket);
+    } catch (error) {
+      console.error("Error getting ticket:", error);
+      res.status(500).json({ message: "Erro ao buscar ticket" });
+    }
+  });
+
+  // Admin: responder
+  app.post("/api/admin/tickets/:id/messages", isAdminAuthenticated, async (req, res) => {
+    try {
+      const { mensagem } = z.object({ mensagem: z.string().min(1).max(5000) }).parse(req.body);
+      const ticket = await storage.getSupportTicket(req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Ticket não encontrado" });
+      const admin = await storage.getAdminAccount(req.adminAccountId!);
+      if (!admin) return res.status(404).json({ message: "Admin não encontrado" });
+
+      const msg = await storage.addSupportMessage({
+        ticketId: ticket.id,
+        autorTipo: "admin",
+        autorId: admin.id,
+        autorNome: admin.nome,
+        mensagem,
+      });
+      // Se ticket está "aberto", move para "em_andamento" automaticamente
+      if (ticket.status === "aberto") {
+        await storage.updateSupportTicket(ticket.id, { status: "em_andamento" });
+      }
+      res.status(201).json(msg);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error adding admin message:", error);
+      res.status(500).json({ message: "Erro ao enviar mensagem" });
+    }
+  });
+
+  // Admin: atualizar status/prioridade
+  app.patch("/api/admin/tickets/:id", isAdminAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        status: z.enum(["aberto", "em_andamento", "resolvido", "fechado"]).optional(),
+        prioridade: z.enum(["baixa", "media", "alta"]).optional(),
+      });
+      const patch = schema.parse(req.body);
+      const updated = await storage.updateSupportTicket(req.params.id, patch);
+      if (!updated) return res.status(404).json({ message: "Ticket não encontrado" });
+      audit("support.ticket.updated", { adminId: req.adminAccountId, ticketId: req.params.id, status: patch.status, prioridade: patch.prioridade });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Dados inválidos" });
+      }
+      console.error("Error updating ticket:", error);
+      res.status(500).json({ message: "Erro ao atualizar ticket" });
     }
   });
 

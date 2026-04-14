@@ -21,7 +21,9 @@ type AuditAction =
   | "camera.deleted"
   | "camera.created"
   | "capture.deleted"
-  | "timelapse.deleted";
+  | "timelapse.deleted"
+  | "support.ticket.created"
+  | "support.ticket.updated";
 
 export function audit(action: AuditAction, meta: Record<string, string | number | boolean | null | undefined> = {}) {
   const entry = {

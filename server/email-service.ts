@@ -48,6 +48,37 @@ export async function sendWelcomeEmail(params: {
   }
 }
 
+export async function sendAdminWelcomeEmail(params: {
+  nome: string;
+  email: string;
+  senha: string;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!resend) {
+    console.log(`[email] RESEND_API_KEY não configurada — email de boas-vindas admin não enviado para ${params.email}`);
+    return { success: false, error: "Serviço de e-mail não configurado" };
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: params.email,
+      subject: "SkyLapse — Sua conta administrativa foi criada",
+      html: buildAdminWelcomeHtml(params),
+    });
+
+    if (error) {
+      console.error("[email] Erro ao enviar admin welcome:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[email] E-mail de boas-vindas admin enviado para ${params.email} (id: ${data?.id})`);
+    return { success: true };
+  } catch (err: any) {
+    console.error("[email] Erro inesperado:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function sendPasswordResetEmail(params: {
   nome: string;
   email: string;
@@ -100,6 +131,98 @@ export async function sendCameraOfflineEmail(params: {
         <a href="${portalUrl}/admin/cameras" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Ver no Portal</a>
       </div>`,
   }).catch(console.error);
+}
+
+export async function sendNewTicketEmail(params: {
+  ticketId: string;
+  assunto: string;
+  clienteNome: string;
+  categoria: string;
+  prioridade: string;
+  mensagem: string;
+}): Promise<void> {
+  if (!resend || !process.env.ADMIN_NOTIFICATION_EMAIL) return;
+
+  const assunto = escapeHtml(params.assunto);
+  const clienteNome = escapeHtml(params.clienteNome);
+  const categoria = escapeHtml(params.categoria);
+  const prioridade = escapeHtml(params.prioridade);
+  const mensagem = escapeHtml(params.mensagem).replace(/\n/g, "<br>");
+  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  const link = `${portalUrl}/admin/suporte`;
+
+  await resend.emails.send({
+    from: FROM_EMAIL,
+    to: process.env.ADMIN_NOTIFICATION_EMAIL,
+    subject: `[Suporte] Novo ticket: ${params.assunto}`,
+    html: `
+      <div style="font-family:sans-serif;background:#0a0e17;color:#f9fafb;padding:32px;border-radius:12px;max-width:560px;">
+        <h2 style="color:#3b82f6;margin:0 0 16px;">Novo ticket de suporte</h2>
+        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Cliente:</strong> ${clienteNome}</p>
+        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Assunto:</strong> ${assunto}</p>
+        <p style="color:#9ca3af;margin:0 0 8px;"><strong style="color:#f9fafb;">Categoria:</strong> ${categoria} — <strong style="color:#f9fafb;">Prioridade:</strong> ${prioridade}</p>
+        <div style="background:#111827;border-left:3px solid #3b82f6;padding:12px 16px;margin:16px 0;color:#e5e7eb;">${mensagem}</div>
+        <a href="${link}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Responder no Portal</a>
+      </div>`,
+  }).catch(console.error);
+}
+
+function buildAdminWelcomeHtml(params: { nome: string; email: string; senha: string }): string {
+  const nome = escapeHtml(params.nome);
+  const email = escapeHtml(params.email);
+  const senha = escapeHtml(params.senha);
+  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e17;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="500" cellpadding="0" cellspacing="0" style="background-color:#111827;border-radius:16px;border:1px solid #1f2937;overflow:hidden;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1e40af,#3b82f6);padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">SkyLapse</h1>
+            <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Painel Administrativo</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 8px;color:#f9fafb;font-size:20px;font-weight:600;">Ola, ${nome}!</h2>
+            <p style="margin:0 0 24px;color:#9ca3af;font-size:14px;line-height:1.6;">
+              Sua conta <strong style="color:#e5e7eb;">administrativa</strong> no SkyLapse foi criada. Com ela voce tem acesso total ao painel: clientes, cameras, time-lapses e tickets de suporte.
+            </p>
+            <div style="background-color:#1f2937;border-radius:12px;padding:24px;margin-bottom:24px;border:1px solid #374151;">
+              <p style="margin:0 0 16px;color:#9ca3af;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Dados de acesso</p>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding:8px 0;color:#9ca3af;font-size:13px;width:60px;">E-mail</td>
+                  <td style="padding:8px 0;color:#f9fafb;font-size:14px;font-weight:500;">${email}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:#9ca3af;font-size:13px;">Senha</td>
+                  <td style="padding:8px 0;">
+                    <code style="background-color:#0a0e17;color:#60a5fa;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:500;border:1px solid #1e3a5f;">${senha}</code>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            <a href="${portalUrl}/login" style="display:block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#ffffff;text-decoration:none;text-align:center;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;">Acessar o Painel</a>
+            <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+              Recomendamos alterar sua senha apos o primeiro acesso. Se voce nao reconhece esta conta, entre em contato imediatamente.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px;border-top:1px solid #1f2937;text-align:center;">
+            <p style="margin:0;color:#4b5563;font-size:11px;">SkyLapse — Painel Administrativo</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 function buildResetHtml(params: { nome: string; resetUrl: string }): string {
