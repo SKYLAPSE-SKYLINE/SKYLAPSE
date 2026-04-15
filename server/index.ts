@@ -23,10 +23,12 @@ if (!process.env.SESSION_SECRET) {
 }
 
 const app = express();
-// Confia em 1 camada de proxy (Render). Necessário pra req.ip refletir o IP real
-// do cliente via X-Forwarded-For, não o IP interno do proxy do Render.
-// Sem isso, rate limit por IP e audit logs ficam todos com o mesmo IP.
-app.set("trust proxy", 1);
+// Confia em qualquer IP de rede privada como proxy (Render tem múltiplos hops
+// internos, e pode haver Cloudflare na frente). Assim req.ip pula todos os IPs
+// privados do X-Forwarded-For e retorna o primeiro IP público real do cliente.
+// "loopback, linklocal, uniquelocal" cobre: 127.x, ::1, 169.254.x, 10.x,
+// 172.16-31.x, 192.168.x, fc00::/7 — ranges que nunca vêm da internet.
+app.set("trust proxy", "loopback, linklocal, uniquelocal");
 const httpServer = createServer(app);
 
 declare module "http" {
