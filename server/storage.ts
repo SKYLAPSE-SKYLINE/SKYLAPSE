@@ -490,6 +490,7 @@ export class DatabaseStorage implements IStorage {
       where,
       with: { clientAccount: true },
       orderBy: desc(supportTickets.updatedAt),
+      limit: 200,
     });
     return result;
   }
@@ -497,7 +498,8 @@ export class DatabaseStorage implements IStorage {
   async getSupportTicketsByClient(clientAccountId: string): Promise<SupportTicket[]> {
     return await db.select().from(supportTickets)
       .where(eq(supportTickets.clientAccountId, clientAccountId))
-      .orderBy(desc(supportTickets.updatedAt));
+      .orderBy(desc(supportTickets.updatedAt))
+      .limit(200);
   }
 
   async getSupportTicket(id: string): Promise<SupportTicketWithMessages | undefined> {

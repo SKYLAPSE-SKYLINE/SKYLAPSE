@@ -105,6 +105,24 @@ function checkChangePasswordRateLimit(accountId: string): boolean {
   return true;
 }
 
+// Rate limit para criação de tickets de suporte (keyed por clientAccountId).
+// Impede "email bomb" contra o admin — cada ticket novo dispara um email.
+const ticketCreateAttempts = new Map<string, { count: number; resetAt: number }>();
+const TICKET_CREATE_MAX = 5;
+const TICKET_CREATE_WINDOW = 60 * 60 * 1000; // 1 hora
+
+function checkTicketCreateRateLimit(accountId: string): boolean {
+  const now = Date.now();
+  const entry = ticketCreateAttempts.get(accountId);
+  if (!entry || now > entry.resetAt) {
+    ticketCreateAttempts.set(accountId, { count: 1, resetAt: now + TICKET_CREATE_WINDOW });
+    return true;
+  }
+  if (entry.count >= TICKET_CREATE_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 // Cleanup expired entries every 30 minutes
 setInterval(() => {
   const now = Date.now();
@@ -116,6 +134,9 @@ setInterval(() => {
   }
   for (const [id, entry] of changePasswordAttempts) {
     if (now > entry.resetAt) changePasswordAttempts.delete(id);
+  }
+  for (const [id, entry] of ticketCreateAttempts) {
+    if (now > entry.resetAt) ticketCreateAttempts.delete(id);
   }
 }, 30 * 60 * 1000);
 
@@ -650,7 +671,7 @@ export async function registerRoutes(
       }
       const etag = `"thumb-${capture.id}"`;
       res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=300");
+      res.set("Cache-Control", "private, max-age=300");
       res.set("ETag", etag);
       if (req.headers["if-none-match"] === etag) {
         return res.status(304).end();
@@ -1281,7 +1302,7 @@ export async function registerRoutes(
       }
       const etag = `"thumb-${capture.id}"`;
       res.set("Content-Type", "image/jpeg");
-      res.set("Cache-Control", "public, max-age=300");
+      res.set("Cache-Control", "private, max-age=300");
       res.set("ETag", etag);
       if (req.headers["if-none-match"] === etag) {
         return res.status(304).end();
@@ -1490,6 +1511,11 @@ export async function registerRoutes(
   // Cliente: criar ticket
   app.post("/api/client/tickets", isClientAuthenticated, async (req, res) => {
     try {
+      if (!checkTicketCreateRateLimit(req.clientAccountId!)) {
+        return res.status(429).json({
+          message: "Muitos tickets criados recentemente. Aguarde e tente novamente mais tarde.",
+        });
+      }
       const schema = z.object({
         assunto: z.string().min(3).max(200),
         categoria: z.enum(["camera", "conta", "duvida", "outro"]),
