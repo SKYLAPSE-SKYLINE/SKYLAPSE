@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { testCameraConnection, fetchSnapshot, testGo2rtcConnection, isSafeTarget } from "./camera-service";
 import { sendWelcomeEmail, sendPasswordResetEmail, sendNewTicketEmail, sendAdminWelcomeEmail } from "./email-service";
+import { getClientIp } from "./client-ip";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import archiver from "archiver";
@@ -956,7 +957,7 @@ export async function registerRoutes(
   // Client login (JWT-based, separate from admin Replit Auth session)
   app.post("/api/client/login", async (req, res) => {
     try {
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha é obrigatória"),
@@ -1017,7 +1018,7 @@ export async function registerRoutes(
   // ── Admin Auth ────────────────────────────────────────────────────────────
   app.post("/api/admin/login", async (req, res) => {
     try {
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
       const loginSchema = z.object({
         email: z.string().email("E-mail inválido"),
         senha: z.string().min(1, "Senha obrigatória"),
@@ -1397,7 +1398,7 @@ export async function registerRoutes(
       const senhaHash = await bcrypt.hash(parsed.data.novaSenha, 12);
       await storage.updateClientPassword(account.id, senhaHash);
       await storage.incrementClientTokenVersion(account.id);
-      audit("client.password.changed", { accountId: account.id, ip: req.ip });
+      audit("client.password.changed", { accountId: account.id, ip: getClientIp(req)});
       res.clearCookie("skylapse-client-token");
       res.json({ message: "Senha alterada com sucesso" });
     } catch (error) {
@@ -1409,7 +1410,7 @@ export async function registerRoutes(
   // Request password reset (public)
   app.post("/api/client/forgot-password", async (req, res) => {
     try {
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
       if (!checkResetRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
@@ -1435,7 +1436,7 @@ export async function registerRoutes(
   // Reset password with token (public)
   app.post("/api/client/reset-password", async (req, res) => {
     try {
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
       if (!checkResetRateLimit(ip)) {
         return res.status(429).json({ message: "Muitas tentativas. Aguarde 15 minutos." });
       }
@@ -1451,7 +1452,7 @@ export async function registerRoutes(
       const senhaHash = await bcrypt.hash(novaSenha, 12);
       await storage.updateClientPassword(account.id, senhaHash);
       await storage.clearResetToken(account.id);
-      audit("client.password.reset", { accountId: account.id, ip: req.ip });
+      audit("client.password.reset", { accountId: account.id, ip: getClientIp(req)});
       res.json({ message: "Senha redefinida com sucesso. Faça login com sua nova senha." });
     } catch (error) {
       console.error("Error reset password:", error);
