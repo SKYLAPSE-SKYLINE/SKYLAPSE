@@ -23,6 +23,10 @@ if (!process.env.SESSION_SECRET) {
 }
 
 const app = express();
+// Confia em 1 camada de proxy (Render). Necessário pra req.ip refletir o IP real
+// do cliente via X-Forwarded-For, não o IP interno do proxy do Render.
+// Sem isso, rate limit por IP e audit logs ficam todos com o mesmo IP.
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
 declare module "http" {
