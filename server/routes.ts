@@ -123,6 +123,24 @@ function checkTicketCreateRateLimit(accountId: string): boolean {
   return true;
 }
 
+// Rate limit para mensagens em tickets (keyed por clientAccountId).
+// Evita spam de mensagens num ticket e DB flood. 30/hora cobre conversas reais.
+const ticketMessageAttempts = new Map<string, { count: number; resetAt: number }>();
+const TICKET_MESSAGE_MAX = 30;
+const TICKET_MESSAGE_WINDOW = 60 * 60 * 1000; // 1 hora
+
+function checkTicketMessageRateLimit(accountId: string): boolean {
+  const now = Date.now();
+  const entry = ticketMessageAttempts.get(accountId);
+  if (!entry || now > entry.resetAt) {
+    ticketMessageAttempts.set(accountId, { count: 1, resetAt: now + TICKET_MESSAGE_WINDOW });
+    return true;
+  }
+  if (entry.count >= TICKET_MESSAGE_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 // Cleanup expired entries every 30 minutes
 setInterval(() => {
   const now = Date.now();
@@ -137,6 +155,9 @@ setInterval(() => {
   }
   for (const [id, entry] of ticketCreateAttempts) {
     if (now > entry.resetAt) ticketCreateAttempts.delete(id);
+  }
+  for (const [id, entry] of ticketMessageAttempts) {
+    if (now > entry.resetAt) ticketMessageAttempts.delete(id);
   }
 }, 30 * 60 * 1000);
 
@@ -1558,6 +1579,11 @@ export async function registerRoutes(
   // Cliente: responder no ticket
   app.post("/api/client/tickets/:id/messages", isClientAuthenticated, async (req, res) => {
     try {
+      if (!checkTicketMessageRateLimit(req.clientAccountId!)) {
+        return res.status(429).json({
+          message: "Muitas mensagens enviadas. Aguarde um pouco antes de enviar mais.",
+        });
+      }
       const { mensagem } = z.object({ mensagem: z.string().min(1).max(5000) }).parse(req.body);
       const ticket = await storage.getSupportTicket(req.params.id);
       if (!ticket || ticket.clientAccountId !== req.clientAccountId) {
