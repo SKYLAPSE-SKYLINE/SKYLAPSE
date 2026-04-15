@@ -16,8 +16,8 @@ import { getFromR2 } from "./r2";
 
 // Max resized image width in pixels. Dashboard cards are ~400px wide;
 // 2× for retina screens = 800px. Anything beyond that is wasted bytes.
-const THUMB_WIDTH = 800;
-const THUMB_QUALITY = 75;
+export const THUMB_WIDTH = 800;
+export const THUMB_QUALITY = 75;
 
 // Cache size: ~200 entries × ~60KB ≈ 12 MB RAM. Plenty for many cameras
 // while keeping memory bounded. LRU order via Map insertion order.

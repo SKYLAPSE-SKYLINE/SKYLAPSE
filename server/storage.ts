@@ -564,9 +564,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async countOpenSupportTickets(): Promise<number> {
+    // Conta só tickets que ainda precisam de atenção (aberto + em_andamento).
+    // "resolvido" e "fechado" não contam — o badge do admin some quando o
+    // ticket é marcado como resolvido.
     const [result] = await db.select({ count: sql<number>`count(*)` })
       .from(supportTickets)
-      .where(sql`${supportTickets.status} != 'fechado'`);
+      .where(sql`${supportTickets.status} IN ('aberto', 'em_andamento')`);
     return Number(result?.count) || 0;
   }
 

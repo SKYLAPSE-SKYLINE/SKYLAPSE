@@ -16,6 +16,15 @@ function escapeHtml(str: string): string {
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "SkyLapse <onboarding@resend.dev>";
 const PORTAL_URL = process.env.PORTAL_URL || "http://localhost:3000";
 
+// Em produção, só aceita https:// pra evitar link de email cair em HTTP se a
+// env var for setada errada. Em dev aceita http:// (localhost).
+function safePortalUrl(): string {
+  if (process.env.NODE_ENV === "production") {
+    return PORTAL_URL.startsWith("https://") ? PORTAL_URL : "#";
+  }
+  return PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+}
+
 export async function sendWelcomeEmail(params: {
   nome: string;
   email: string;
@@ -117,7 +126,7 @@ export async function sendCameraOfflineEmail(params: {
 
   const now = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const cameraNome = escapeHtml(params.cameraNome);
-  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  const portalUrl = safePortalUrl();
 
   await resend.emails.send({
     from: FROM_EMAIL,
@@ -150,7 +159,7 @@ export async function sendNewTicketEmail(params: {
   const categoria = escapeHtml(params.categoria);
   const prioridade = escapeHtml(params.prioridade);
   const mensagem = escapeHtml(params.mensagem).replace(/\n/g, "<br>");
-  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  const portalUrl = safePortalUrl();
   const link = `${portalUrl}/admin/suporte`;
 
   await resend.emails.send({
@@ -175,7 +184,7 @@ function buildAdminWelcomeHtml(params: { nome: string; email: string; senha: str
   const nome = escapeHtml(params.nome);
   const email = escapeHtml(params.email);
   const senha = escapeHtml(params.senha);
-  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  const portalUrl = safePortalUrl();
   return `
 <!DOCTYPE html>
 <html>
@@ -283,7 +292,7 @@ function buildWelcomeHtml(params: {
   const email = escapeHtml(params.email);
   const senha = escapeHtml(params.senha);
   const clienteNome = params.clienteNome ? escapeHtml(params.clienteNome) : undefined;
-  const portalUrl = PORTAL_URL.startsWith("http") ? PORTAL_URL : "#";
+  const portalUrl = safePortalUrl();
   return `
 <!DOCTYPE html>
 <html>

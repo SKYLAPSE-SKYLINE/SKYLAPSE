@@ -690,7 +690,8 @@ export async function registerRoutes(
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
       }
-      const etag = `"thumb-${capture.id}"`;
+      const { THUMB_WIDTH, THUMB_QUALITY } = await import("./thumbnail");
+      const etag = `"thumb-${capture.id}-w${THUMB_WIDTH}q${THUMB_QUALITY}"`;
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "private, max-age=300");
       res.set("ETag", etag);
@@ -1321,7 +1322,8 @@ export async function registerRoutes(
       if (!capture) {
         return res.status(404).json({ message: "Nenhuma captura encontrada" });
       }
-      const etag = `"thumb-${capture.id}"`;
+      const { THUMB_WIDTH, THUMB_QUALITY } = await import("./thumbnail");
+      const etag = `"thumb-${capture.id}-w${THUMB_WIDTH}q${THUMB_QUALITY}"`;
       res.set("Content-Type", "image/jpeg");
       res.set("Cache-Control", "private, max-age=300");
       res.set("ETag", etag);
