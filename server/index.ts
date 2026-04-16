@@ -52,6 +52,9 @@ app.use(
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(cookieParser());
 
+// Remove X-Powered-By header (revela que é Express — facilita fingerprinting)
+app.disable("x-powered-by");
+
 // Security headers
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -59,14 +62,24 @@ app.use((_req, res, next) => {
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  // Allow iframes only for go2rtc stream URLs (same-origin + tailscale funnel)
+  // CSP: default-src como fallback, diretivas específicas, base-uri e form-action
+  // bloqueiam injeção de <base> e <form> externos via XSS, frame-ancestors substitui
+  // X-Frame-Options pra navegadores modernos.
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self' https://*.ts.net; connect-src 'self' https://*.ts.net; font-src 'self' data:;"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self' https://*.ts.net; connect-src 'self' https://*.ts.net; font-src 'self' data:; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
   );
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
+  next();
+});
+
+// Cache-Control para respostas de API — evita que proxies/browsers armazenem
+// dados sensíveis (sessão, dados de conta, tokens) em cache.
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
   next();
 });
 
