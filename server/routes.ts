@@ -582,8 +582,8 @@ export async function registerRoutes(
       if (!captures || captures.length === 0) {
         return res.status(404).json({ message: "Nenhuma captura encontrada no período" });
       }
-      if (captures.length > 1000) {
-        return res.status(400).json({ message: `Período contém ${captures.length} capturas. Máximo por download: 1000. Reduza o intervalo de datas.` });
+      if (captures.length > 3000) {
+        return res.status(400).json({ message: `Período contém ${captures.length} capturas. Máximo por download: 3000. Reduza o intervalo de datas.` });
       }
       const camera = await storage.getCamera(req.params.id);
       const nomeCamera = camera?.nome || "camera";
@@ -1301,8 +1301,8 @@ export async function registerRoutes(
       if (!captures || captures.length === 0) {
         return res.status(404).json({ message: "Nenhuma captura encontrada no período" });
       }
-      if (captures.length > 1000) {
-        return res.status(400).json({ message: `Período contém ${captures.length} capturas. Máximo por download: 1000. Reduza o intervalo de datas.` });
+      if (captures.length > 3000) {
+        return res.status(400).json({ message: `Período contém ${captures.length} capturas. Máximo por download: 3000. Reduza o intervalo de datas.` });
       }
 
       const camera = await storage.getCamera(req.params.id);
