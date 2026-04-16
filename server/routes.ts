@@ -37,37 +37,53 @@ const CLIENT_JWT_SECRET = process.env.SESSION_SECRET! + "_client";
 const ADMIN_JWT_SECRET = process.env.SESSION_SECRET! + "_admin";
 
 // Rate limiting for login endpoints.
-// Keyed by `${ip}|${email}` so failures on account A don't block account B
-// from the same IP. Also keeps separate buckets from forgot/reset flows below.
+// Duas camadas: (1) por IP+email — impede brute force em uma conta específica,
+// (2) por IP puro — impede password spray entre muitos emails.
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX = 5;         // 5 erros por IP+email em 15 min
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000;
+
+const ipLoginAttempts = new Map<string, { count: number; resetAt: number }>();
+const IP_RATE_LIMIT_MAX = 50;     // 50 erros TOTAL por IP em 1 hora
+const IP_RATE_LIMIT_WINDOW = 60 * 60 * 1000;
 
 function loginKey(ip: string, email?: string): string {
   return email ? `${ip}|${email.toLowerCase()}` : ip;
 }
 
-// Returns true if allowed to attempt login. Does NOT consume an attempt.
+// Returns true if allowed to attempt login. Checks BOTH layers.
 function checkRateLimit(ip: string, email?: string): boolean {
   const now = Date.now();
+  // Layer 1: per IP+email
   const entry = loginAttempts.get(loginKey(ip, email));
-  if (!entry || now > entry.resetAt) return true;
-  return entry.count < RATE_LIMIT_MAX;
+  if (entry && now <= entry.resetAt && entry.count >= RATE_LIMIT_MAX) return false;
+  // Layer 2: per IP (anti password spray)
+  const ipEntry = ipLoginAttempts.get(ip);
+  if (ipEntry && now <= ipEntry.resetAt && ipEntry.count >= IP_RATE_LIMIT_MAX) return false;
+  return true;
 }
 
-// Call on a FAILED login to increment the counter.
+// Call on a FAILED login to increment both counters.
 function recordFailedLogin(ip: string, email?: string): void {
   const now = Date.now();
+  // Layer 1: per IP+email
   const key = loginKey(ip, email);
   const entry = loginAttempts.get(key);
   if (!entry || now > entry.resetAt) {
     loginAttempts.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return;
+  } else {
+    entry.count++;
   }
-  entry.count++;
+  // Layer 2: per IP
+  const ipEntry = ipLoginAttempts.get(ip);
+  if (!ipEntry || now > ipEntry.resetAt) {
+    ipLoginAttempts.set(ip, { count: 1, resetAt: now + IP_RATE_LIMIT_WINDOW });
+  } else {
+    ipEntry.count++;
+  }
 }
 
-// Call on a SUCCESSFUL login to reset the counter.
+// Call on a SUCCESSFUL login to reset per-email counter (NOT per-IP).
 function resetRateLimit(ip: string, email?: string): void {
   loginAttempts.delete(loginKey(ip, email));
 }
@@ -146,6 +162,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of loginAttempts) {
     if (now > entry.resetAt) loginAttempts.delete(ip);
+  }
+  for (const [ip, entry] of ipLoginAttempts) {
+    if (now > entry.resetAt) ipLoginAttempts.delete(ip);
   }
   for (const [ip, entry] of resetAttempts) {
     if (now > entry.resetAt) resetAttempts.delete(ip);
