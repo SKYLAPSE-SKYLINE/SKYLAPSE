@@ -167,7 +167,7 @@ export async function fetchSnapshotFromGo2rtc(streamUrl: string, source: string 
   console.log(`[go2rtc] Capturing snapshot from: ${frameUrl}`);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const response = await fetch(frameUrl, { signal: controller.signal });
@@ -189,7 +189,7 @@ export async function fetchSnapshotFromGo2rtc(streamUrl: string, source: string 
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
-      return { sucesso: false, mensagem: 'Timeout: go2rtc não respondeu em 15 segundos' };
+      return { sucesso: false, mensagem: 'Timeout: go2rtc não respondeu em 30 segundos' };
     }
     console.error(`[go2rtc] Error:`, error.message);
     return { sucesso: false, mensagem: `Erro ao capturar snapshot: ${error.message}` };
