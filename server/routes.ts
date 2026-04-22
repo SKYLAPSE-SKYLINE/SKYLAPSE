@@ -819,10 +819,13 @@ export async function registerRoutes(
   });
 
   // Timelapses CRUD
+  const prefixVideoUrl = <T extends { videoUrl?: string | null }>(t: T): T =>
+    ({ ...t, videoUrl: t.videoUrl ? `/api/${t.videoUrl}` : t.videoUrl });
+
   app.get("/api/admin/timelapses", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapses = await storage.getTimelapses();
-      res.json(timelapses);
+      res.json(timelapses.map(prefixVideoUrl));
     } catch (error) {
       console.error("Error fetching timelapses:", error);
       res.status(500).json({ message: "Failed to fetch timelapses" });
@@ -832,7 +835,7 @@ export async function registerRoutes(
   app.get("/api/admin/timelapses/recent", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapses = await storage.getRecentTimelapses(5);
-      res.json(timelapses);
+      res.json(timelapses.map(prefixVideoUrl));
     } catch (error) {
       console.error("Error fetching recent timelapses:", error);
       res.status(500).json({ message: "Failed to fetch recent timelapses" });
@@ -845,7 +848,7 @@ export async function registerRoutes(
       if (!timelapse) {
         return res.status(404).json({ message: "Timelapse not found" });
       }
-      res.json(timelapse);
+      res.json(prefixVideoUrl(timelapse));
     } catch (error) {
       console.error("Error fetching timelapse:", error);
       res.status(500).json({ message: "Failed to fetch timelapse" });
