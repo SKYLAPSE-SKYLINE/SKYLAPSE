@@ -561,7 +561,10 @@ export async function registerRoutes(
         page ? Math.max(1, parseInt(page as string, 10) || 1) : 1,
         limit ? Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50)) : 50,
       );
-      res.json(result);
+      res.json({
+        ...result,
+        data: result.data.map((c) => ({ ...c, imagemUrl: c.imagemUrl ? `/api/${c.imagemUrl}` : c.imagemUrl })),
+      });
     } catch (error) {
       console.error("Error fetching captures:", error);
       res.status(500).json({ message: "Failed to fetch captures" });
@@ -1276,7 +1279,10 @@ export async function registerRoutes(
         page ? Math.max(1, parseInt(page as string, 10) || 1) : 1,
         limit ? Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50)) : 50,
       );
-      res.json(result);
+      res.json({
+        ...result,
+        data: result.data.map((c) => ({ ...c, imagemUrl: c.imagemUrl ? `/api/${c.imagemUrl}` : c.imagemUrl })),
+      });
     } catch (error) {
       console.error("Error fetching client captures:", error);
       res.status(500).json({ message: "Erro ao buscar capturas" });
