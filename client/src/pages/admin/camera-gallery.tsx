@@ -147,7 +147,7 @@ export default function CameraGalleryPage() {
 
         {/* Grid */}
         {capturesLoading ? (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {[...Array(15)].map((_, i) => (
               <Skeleton key={i} className="aspect-video rounded-lg bg-zinc-800" />
             ))}
@@ -162,7 +162,7 @@ export default function CameraGalleryPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {captures.map((capture, index) => (
                 <div
                   key={capture.id}

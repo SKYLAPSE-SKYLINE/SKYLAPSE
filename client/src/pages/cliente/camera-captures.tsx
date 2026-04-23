@@ -101,7 +101,7 @@ export default function ClienteCameraCaptures() {
         </div>
       </header>
 
-      <main className="mx-auto px-6 lg:px-10 py-6 space-y-6">
+      <main className="mx-auto px-6 lg:px-10 py-6 space-y-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800/50 rounded-lg px-3 py-2">
@@ -172,7 +172,7 @@ export default function ClienteCameraCaptures() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {captures.map((capture, index) => (
                 <div
                   key={capture.id}

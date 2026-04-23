@@ -37,16 +37,13 @@ type ClientCamera = {
 };
 
 function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; open: boolean; onClose: () => void }) {
-  const [mode, setMode] = useState<"snapshot" | "stream">("snapshot");
   const [streamActive, setStreamActive] = useState(false);
-  const snapshotUrl = camera ? `/api/client/cameras/${camera.id}/snapshot?t=${Date.now()}` : "";
   const safeStreamUrl = camera?.streamUrl && /^https?:\/\//i.test(camera.streamUrl) ? camera.streamUrl : null;
   const liveStreamUrl = safeStreamUrl
     ? `${safeStreamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
     : null;
 
   const handleClose = () => {
-    setMode("snapshot");
     setStreamActive(false);
     onClose();
   };
@@ -56,7 +53,7 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl p-0 bg-zinc-950 border-zinc-800 gap-0 overflow-hidden">
-        {/* Tab bar */}
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800/60">
           <div className="flex items-center gap-3">
             <div className={`w-2 h-2 rounded-full ${camera.status === "online" ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]" : "bg-zinc-600"}`} />
@@ -65,31 +62,11 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
               <span className="text-xs text-zinc-500">{camera.localidade.nome}</span>
             )}
           </div>
-          {liveStreamUrl && (
-            <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5">
-              <button
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  mode === "snapshot" ? "bg-zinc-700 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-300"
-                }`}
-                onClick={() => { setMode("snapshot"); setStreamActive(false); }}
-              >
-                Snapshot
-              </button>
-              <button
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  mode === "stream" ? "bg-zinc-700 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-300"
-                }`}
-                onClick={() => setMode("stream")}
-              >
-                Ao Vivo
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Content */}
         <div className="relative bg-zinc-900 rounded-xl overflow-hidden">
-          {mode === "stream" && liveStreamUrl ? (
+          {liveStreamUrl ? (
             streamActive ? (
               <iframe
                 src={liveStreamUrl}
@@ -119,13 +96,10 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
               </div>
             )
           ) : (
-            <img
-              src={snapshotUrl}
-              alt={`Snapshot de ${camera.nome}`}
-              className="w-full object-cover max-h-[65vh]"
-              data-testid="img-live-snapshot"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
+            <div className="flex flex-col items-center justify-center gap-3" style={{ height: "65vh" }}>
+              <Monitor className="h-10 w-10 text-zinc-700" />
+              <p className="text-zinc-500 text-sm">Stream ao vivo nao disponivel</p>
+            </div>
           )}
         </div>
       </DialogContent>
@@ -285,7 +259,7 @@ export default function ClienteDashboard() {
         </div>
       </header>
 
-      <main className="mx-auto px-6 lg:px-10 py-8 space-y-8">
+      <main className="mx-auto px-6 lg:px-10 py-8 space-y-8 animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out">
         {/* Summary bar */}
         <div className="flex items-end justify-between gap-4">
           <div>

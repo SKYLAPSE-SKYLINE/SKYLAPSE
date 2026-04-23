@@ -1,22 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, RefreshCw, Camera, Images, AlertCircle, Wifi, Monitor, Eye } from "lucide-react";
+import { ArrowLeft, Images, AlertCircle, Wifi, Monitor, Eye } from "lucide-react";
 import type { Camera as CameraType, Capture } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-type ViewMode = "snapshot" | "stream";
-
 export default function CameraLivePage() {
   const params = useParams();
   const cameraId = params.id;
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [imageError, setImageError] = useState(false);
-  const [imageLoading, setImageLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("snapshot");
   const [streamActive, setStreamActive] = useState(false);
 
   const { data: camera, isLoading: cameraLoading } = useQuery<CameraType>({
@@ -29,28 +23,11 @@ export default function CameraLivePage() {
     refetchInterval: 30000,
   });
 
-  const snapshotUrl = `/api/admin/cameras/${cameraId}/snapshot?t=${refreshKey}`;
   const streamUrl = (camera as any)?.streamUrl as string | null | undefined;
   const safeStreamUrl = streamUrl && /^https?:\/\//i.test(streamUrl) ? streamUrl : null;
   const liveStreamUrl = safeStreamUrl
     ? `${safeStreamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
     : null;
-
-  useEffect(() => {
-    if (viewMode !== "snapshot") return;
-    const interval = setInterval(() => {
-      setRefreshKey((k) => k + 1);
-      setImageError(false);
-      setImageLoading(true);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [viewMode]);
-
-  const handleRefresh = () => {
-    setRefreshKey((k) => k + 1);
-    setImageError(false);
-    setImageLoading(true);
-  };
 
   if (cameraLoading) {
     return (
@@ -75,37 +52,7 @@ export default function CameraLivePage() {
             <span className="text-sm text-zinc-300 font-medium">{camera?.nome}</span>
           </div>
 
-          {/* Mode toggle */}
-          {safeStreamUrl && (
-            <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-0.5 ml-2">
-              <button
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "snapshot" ? "bg-zinc-700 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-300"}`}
-                onClick={() => { setViewMode("snapshot"); setStreamActive(false); }}
-                data-testid="button-mode-snapshot"
-              >
-                Snapshot
-              </button>
-              <button
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "stream" ? "bg-zinc-700 text-white shadow-sm" : "text-zinc-400 hover:text-zinc-300"}`}
-                onClick={() => setViewMode("stream")}
-                data-testid="button-mode-stream"
-              >
-                Ao Vivo
-              </button>
-            </div>
-          )}
-
           <div className="flex items-center gap-2 ml-auto">
-            {viewMode === "snapshot" && (
-              <button
-                onClick={handleRefresh}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-200 text-xs font-medium hover:bg-zinc-700 hover:text-white transition-colors"
-                data-testid="button-refresh-snapshot"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Atualizar
-              </button>
-            )}
             <Link
               href={`/admin/cameras/${cameraId}/galeria`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-200 text-xs font-medium hover:bg-zinc-700 hover:text-white transition-colors"
@@ -120,7 +67,7 @@ export default function CameraLivePage() {
         <div className="flex justify-center">
         <div className="relative rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-700/50 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)] w-full max-w-5xl">
           <div className="aspect-video relative">
-            {viewMode === "stream" && liveStreamUrl ? (
+            {liveStreamUrl ? (
               streamActive ? (
                 <iframe
                   src={liveStreamUrl}
@@ -148,51 +95,12 @@ export default function CameraLivePage() {
                 </div>
               )
             ) : (
-              <>
-                {imageLoading && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900">
-                    <RefreshCw className="h-6 w-6 animate-spin text-zinc-500" />
-                  </div>
-                )}
-                {imageError ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-4">
-                    <AlertCircle className="h-12 w-12 text-red-400/50" />
-                    <p className="text-zinc-400 text-sm">Erro ao conectar com a camera</p>
-                    <button
-                      onClick={handleRefresh}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700/60 text-zinc-200 text-xs font-medium hover:bg-zinc-700 hover:text-white transition-colors"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Tentar novamente
-                    </button>
-                  </div>
-                ) : (
-                  <img
-                    key={refreshKey}
-                    src={snapshotUrl}
-                    alt={`Snapshot de ${camera?.nome}`}
-                    className="h-full w-full object-cover"
-                    onLoad={() => setImageLoading(false)}
-                    onError={() => { setImageLoading(false); setImageError(true); }}
-                  />
-                )}
-              </>
+              <div className="flex h-full flex-col items-center justify-center gap-4">
+                <AlertCircle className="h-12 w-12 text-zinc-600" />
+                <p className="text-zinc-400 text-sm">Stream ao vivo nao configurado para esta camera</p>
+              </div>
             )}
           </div>
-
-          {/* Bottom info bar */}
-          {!imageError && viewMode === "snapshot" && !imageLoading && (
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3">
-              <div className="flex items-center justify-between text-white/80">
-                <span className="text-xs">Atualiza a cada 30s</span>
-                <span className="text-xs">
-                  {camera?.ultimaCaptura
-                    ? `Ultima captura ${formatDistanceToNow(new Date(camera.ultimaCaptura), { addSuffix: true, locale: ptBR })}`
-                    : ""}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
         </div>
 

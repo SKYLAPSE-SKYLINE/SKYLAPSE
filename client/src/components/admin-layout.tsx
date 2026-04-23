@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Menu } from "lucide-react";
 
@@ -10,6 +11,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, title }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [location] = useLocation();
 
   return (
     <div className="min-h-screen bg-zinc-950 dark">
@@ -30,7 +32,10 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
           )}
         </header>
 
-        <main className="p-6 lg:p-8 2xl:p-10">
+        <main
+          key={location}
+          className="p-6 lg:p-8 2xl:p-10 animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out"
+        >
           {children}
         </main>
       </div>

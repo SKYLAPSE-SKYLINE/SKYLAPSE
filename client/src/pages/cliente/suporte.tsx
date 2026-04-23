@@ -102,7 +102,7 @@ export default function ClienteSuporte() {
         </div>
       </header>
 
-      <main className="mx-auto px-6 lg:px-10 py-8 max-w-5xl">
+      <main className="mx-auto px-6 lg:px-10 py-8 max-w-5xl animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-white">Minhas solicitações</h1>
           <p className="text-sm text-zinc-500 mt-1">
