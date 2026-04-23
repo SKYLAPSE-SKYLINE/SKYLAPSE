@@ -94,6 +94,25 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+const SENSITIVE_FIELDS = new Set([
+  "senha", "senhaHash", "senhaAtual", "novaSenha", "confirmar",
+  "password", "passwordHash", "token", "authorization",
+  "usuario", "username", "apiKey", "secret",
+]);
+
+function redactSensitive(value: any, depth = 0): any {
+  if (depth > 4 || value == null) return value;
+  if (Array.isArray(value)) return value.map((v) => redactSensitive(v, depth + 1));
+  if (typeof value === "object") {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = SENSITIVE_FIELDS.has(k) ? "[REDACTED]" : redactSensitive(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -106,13 +125,17 @@ app.use((req, res, next) => {
   };
 
   const SENSITIVE_PATHS = ["/api/admin/login", "/api/client/login", "/api/client/change-password", "/api/client/forgot-password", "/api/client/reset-password"];
+  const isProd = process.env.NODE_ENV === "production";
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse && !SENSITIVE_PATHS.includes(path)) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (!isProd && capturedJsonResponse && !SENSITIVE_PATHS.includes(path)) {
+        const safe = redactSensitive(capturedJsonResponse);
+        let body = JSON.stringify(safe);
+        if (body.length > 500) body = body.slice(0, 500) + "…";
+        logLine += ` :: ${body}`;
       }
 
       log(logLine);

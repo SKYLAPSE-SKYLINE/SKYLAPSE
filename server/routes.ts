@@ -825,7 +825,10 @@ export async function registerRoutes(
   app.get("/api/admin/timelapses", isAdminAuthenticated, async (req, res) => {
     try {
       const timelapses = await storage.getTimelapses();
-      res.json(timelapses.map(prefixVideoUrl));
+      res.json(timelapses.map((t) => {
+        const withUrl = prefixVideoUrl(t);
+        return t.camera ? { ...withUrl, camera: stripCameraCredentials(t.camera) } : withUrl;
+      }));
     } catch (error) {
       console.error("Error fetching timelapses:", error);
       res.status(500).json({ message: "Failed to fetch timelapses" });
