@@ -111,7 +111,7 @@ async function processTimelapse(timelapse: {
         "-f", "concat",
         "-safe", "0",
         "-i", listFile,
-        "-vf", `fps=${fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+        "-vf", `fps=${fps},scale='min(1920,trunc(iw/2)*2)':'-2'`,
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "23",
@@ -119,14 +119,17 @@ async function processTimelapse(timelapse: {
         "-movflags", "+faststart",
         outputPath,
       ], {
-        timeout: 600_000, // 10 min max
+        timeout: 600_000,
+        maxBuffer: 50 * 1024 * 1024,
       });
     } catch (error: any) {
+      const stderrTail = (error.stderr || "").toString().split("\n").slice(-20).join("\n");
+      const fullMsg = stderrTail || error.message || "desconhecido";
       await storage.updateTimelapse(timelapse.id, {
         status: "erro",
-        erroMensagem: `Erro do ffmpeg: ${error.message?.substring(0, 200)}`,
+        erroMensagem: `Erro do ffmpeg: ${fullMsg.substring(0, 2000)}`,
       } as any);
-      log(`Timelapse "${timelapse.nome || timelapse.id}": erro ffmpeg — ${error.message}`, "timelapse-job");
+      log(`Timelapse "${timelapse.nome || timelapse.id}": erro ffmpeg — ${fullMsg}`, "timelapse-job");
       return;
     }
 
