@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { LogOut, MapPin, Clock, Eye, Monitor, Wifi, WifiOff, Camera, Images, LifeBuoy } from "lucide-react";
+
+const STREAM_LIMIT_SECONDS = 60;
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,13 +40,34 @@ type ClientCamera = {
 
 function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; open: boolean; onClose: () => void }) {
   const [streamActive, setStreamActive] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(STREAM_LIMIT_SECONDS);
+  const [timeExpired, setTimeExpired] = useState(false);
   const safeStreamUrl = camera?.streamUrl && /^https?:\/\//i.test(camera.streamUrl) ? camera.streamUrl : null;
   const liveStreamUrl = safeStreamUrl
     ? `${safeStreamUrl.replace(/\/$/, "")}/stream.html?src=camera1&mode=mse`
     : null;
 
+  useEffect(() => {
+    if (!streamActive) return;
+    setSecondsLeft(STREAM_LIMIT_SECONDS);
+    setTimeExpired(false);
+    const interval = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(interval);
+          setStreamActive(false);
+          setTimeExpired(true);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [streamActive]);
+
   const handleClose = () => {
     setStreamActive(false);
+    setTimeExpired(false);
     onClose();
   };
 
@@ -68,22 +91,34 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
         <div className="relative bg-zinc-900 rounded-xl overflow-hidden">
           {liveStreamUrl ? (
             streamActive ? (
-              <iframe
-                src={liveStreamUrl}
-                className="w-full border-0"
-                style={{ height: "65vh" }}
-                allow="autoplay"
-                title={`Stream ao vivo — ${camera.nome}`}
-                data-testid="iframe-client-live-stream"
-              />
+              <div className="relative">
+                <iframe
+                  src={liveStreamUrl}
+                  className="w-full border-0"
+                  style={{ height: "65vh" }}
+                  allow="autoplay"
+                  title={`Stream ao vivo — ${camera.nome}`}
+                  data-testid="iframe-client-live-stream"
+                />
+                <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-white text-xs font-medium tabular-nums">
+                  <Clock className="h-3 w-3" />
+                  0:{String(secondsLeft).padStart(2, "0")}
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-5" style={{ height: "65vh" }}>
                 <div className="w-20 h-20 rounded-full bg-zinc-800/80 flex items-center justify-center">
                   <Monitor className="h-8 w-8 text-zinc-500" />
                 </div>
                 <div className="text-center space-y-1.5">
-                  <p className="text-white/80 text-sm font-medium">Stream pausado</p>
-                  <p className="text-zinc-500 text-xs max-w-xs">A transmissao consome dados. Inicie apenas quando necessario.</p>
+                  <p className="text-white/80 text-sm font-medium">
+                    {timeExpired ? "Tempo esgotado" : "Stream pausado"}
+                  </p>
+                  <p className="text-zinc-500 text-xs max-w-xs">
+                    {timeExpired
+                      ? "O limite de 1 minuto foi atingido. Retome se precisar."
+                      : "Transmissao limitada a 1 minuto por sessao."}
+                  </p>
                 </div>
                 <Button
                   className="bg-blue-600 hover:bg-blue-500 text-white"
@@ -91,7 +126,7 @@ function LiveDialog({ camera, open, onClose }: { camera: ClientCamera | null; op
                   data-testid="button-start-client-stream"
                 >
                   <Eye className="h-4 w-4 mr-2" />
-                  Iniciar transmissao
+                  {timeExpired ? "Retomar transmissao" : "Iniciar transmissao"}
                 </Button>
               </div>
             )

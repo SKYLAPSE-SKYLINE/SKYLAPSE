@@ -1,17 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Images, AlertCircle, Wifi, Monitor, Eye } from "lucide-react";
+import { ArrowLeft, Images, AlertCircle, Wifi, Monitor, Eye, Clock } from "lucide-react";
 import type { Camera as CameraType, Capture } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+const STREAM_LIMIT_SECONDS = 60;
 
 export default function CameraLivePage() {
   const params = useParams();
   const cameraId = params.id;
   const [streamActive, setStreamActive] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(STREAM_LIMIT_SECONDS);
+  const [timeExpired, setTimeExpired] = useState(false);
+
+  useEffect(() => {
+    if (!streamActive) return;
+    setSecondsLeft(STREAM_LIMIT_SECONDS);
+    setTimeExpired(false);
+    const interval = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(interval);
+          setStreamActive(false);
+          setTimeExpired(true);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [streamActive]);
 
   const { data: camera, isLoading: cameraLoading } = useQuery<CameraType>({
     queryKey: ["/api/admin/cameras", cameraId],
@@ -69,28 +91,40 @@ export default function CameraLivePage() {
           <div className="aspect-video relative">
             {liveStreamUrl ? (
               streamActive ? (
-                <iframe
-                  src={liveStreamUrl}
-                  className="h-full w-full border-0"
-                  allow="autoplay"
-                  title={`Stream ao vivo — ${camera?.nome}`}
-                  data-testid="iframe-live-stream"
-                />
+                <>
+                  <iframe
+                    src={liveStreamUrl}
+                    className="h-full w-full border-0"
+                    allow="autoplay"
+                    title={`Stream ao vivo — ${camera?.nome}`}
+                    data-testid="iframe-live-stream"
+                  />
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm text-white text-xs font-medium tabular-nums">
+                    <Clock className="h-3 w-3" />
+                    0:{String(secondsLeft).padStart(2, "0")}
+                  </div>
+                </>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-5">
                   <div className="w-20 h-20 rounded-full bg-zinc-800/80 flex items-center justify-center">
                     <Monitor className="h-8 w-8 text-zinc-500" />
                   </div>
                   <div className="text-center space-y-1.5">
-                    <p className="text-white/80 text-sm font-medium">Stream pausado</p>
-                    <p className="text-zinc-500 text-xs">A transmissao consome dados. Inicie apenas quando necessario.</p>
+                    <p className="text-white/80 text-sm font-medium">
+                      {timeExpired ? "Tempo esgotado" : "Stream pausado"}
+                    </p>
+                    <p className="text-zinc-500 text-xs">
+                      {timeExpired
+                        ? "O limite de 1 minuto foi atingido. Retome se precisar."
+                        : "Transmissao limitada a 1 minuto por sessao."}
+                    </p>
                   </div>
                   <button
                     onClick={() => setStreamActive(true)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
                   >
                     <Eye className="h-4 w-4" />
-                    Iniciar transmissao
+                    {timeExpired ? "Retomar transmissao" : "Iniciar transmissao"}
                   </button>
                 </div>
               )
